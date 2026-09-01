@@ -1,9 +1,14 @@
 package com.example.myapplication
 
+import android.Manifest
+import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
+import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
+import androidx.core.content.ContextCompat
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -60,6 +65,40 @@ fun HomeScreen(
     val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current
     val density = LocalDensity.current
+
+    val audioPermission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        Manifest.permission.READ_MEDIA_AUDIO
+    } else {
+        Manifest.permission.READ_EXTERNAL_STORAGE
+    }
+
+    val imagePermission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        Manifest.permission.READ_MEDIA_IMAGES
+    } else {
+        Manifest.permission.READ_EXTERNAL_STORAGE
+    }
+
+    var pendingAction by remember { mutableStateOf<(() -> Unit)?>(null) }
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        if (permissions.entries.all { it.value }) {
+            pendingAction?.invoke()
+        }
+        pendingAction = null
+    }
+
+    fun runWithPermission(permission: String, action: () -> Unit) {
+        Log.d("HomeScreen", "runWithPermission: checking $permission")
+        if (ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED) {
+            Log.d("HomeScreen", "runWithPermission: already granted")
+            action()
+        } else {
+            Log.d("HomeScreen", "runWithPermission: requesting $permission")
+            pendingAction = action
+            permissionLauncher.launch(arrayOf(permission))
+        }
+    }
 
     var trackToEdit by remember { mutableStateOf<Track?>(null) }
     var trackToRename by remember { mutableStateOf<Track?>(null) }
@@ -149,7 +188,7 @@ fun HomeScreen(
             }
 
             HomeHeader(
-                onScan = { viewModel.loadLocalMusic() },
+                onScan = { runWithPermission(audioPermission) { viewModel.loadLocalMusic() } },
                 onImport = { importLauncher.launch(arrayOf("audio/*")) },
                 searchQuery = uiState.searchQuery,
                 onSearchQueryChange = { viewModel.setSearchQuery(it) }
@@ -232,7 +271,7 @@ fun HomeScreen(
                 Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                     if (uiState.searchQuery.isEmpty()) {
                         EmptyHomeState(
-                            onScan = { viewModel.loadLocalMusic() },
+                            onScan = { runWithPermission(audioPermission) { viewModel.loadLocalMusic() } },
                             onImport = { importLauncher.launch(arrayOf("audio/*")) }
                         )
                     } else {
@@ -265,8 +304,10 @@ fun HomeScreen(
                             onAddToPlaylist = { viewModel.addTrackToPlaylist(track, it) },
                             onDelete = { viewModel.deleteTrack(track) },
                             onEditPoster = {
-                                trackToEdit = track
-                                galleryLauncher.launch("image/*")
+                                runWithPermission(imagePermission) {
+                                    trackToEdit = track
+                                    galleryLauncher.launch("image/*")
+                                }
                             },
                             onRename = { trackToRename = it }
                         )

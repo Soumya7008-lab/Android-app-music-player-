@@ -22,7 +22,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
-import androidx.compose.material3.*
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -40,6 +41,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.myapplication.ui.theme.AppTheme
+import androidx.compose.material3.*
 
 enum class DragAnchors { Start, End }
 
@@ -116,7 +118,11 @@ fun MainNavigation(
                 AnimatedContent(
                     targetState = currentTab,
                     transitionSpec = {
-                        val direction = if (targetState == "library") 1 else -1
+                        val direction = when {
+                            targetState == "equalizer" -> 1
+                            targetState == "library" && initialState == "home" -> 1
+                            else -> -1
+                        }
                         (slideInHorizontally(
                             initialOffsetX = { it * direction },
                             animationSpec = spring(stiffness = 500f, dampingRatio = 0.75f)
@@ -140,6 +146,9 @@ fun MainNavigation(
                             isDarkTheme = isDarkTheme,
                             onThemeToggle = onThemeToggle,
                             onMiniPlayerClick = { showPlayer = true }
+                        )
+                        "equalizer" -> EqualizerScreen(
+                            viewModel = musicViewModel
                         )
                     }
                 }
@@ -288,6 +297,12 @@ fun MusicBottomNavigation(
                 label = "Library",
                 isSelected = currentTab == "library",
                 onClick = { onTabSelect("library") }
+            )
+            NavPillItem(
+                icon = Icons.Default.Tune,
+                label = "EQ",
+                isSelected = currentTab == "equalizer",
+                onClick = { onTabSelect("equalizer") }
             )
             NavPillItem(
                 icon = if (isDarkTheme) Icons.Default.DarkMode else Icons.Default.LightMode,

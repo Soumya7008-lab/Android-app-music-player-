@@ -14,7 +14,9 @@ import androidx.lifecycle.viewModelScope
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
+import android.os.Bundle
 import androidx.media3.session.MediaController
+import androidx.media3.session.SessionCommand
 import androidx.media3.session.SessionToken
 import com.example.myapplication.audio.MusicService
 import com.example.myapplication.data.MediaScanner
@@ -56,6 +58,11 @@ data class Playlist(
     val customArtworkUri: String? = null // NEW: Playlist custom poster support
 )
 
+data class EqPreset(
+    val name: String,
+    val bands: List<Float>
+)
+
 data class UiState(
     val playlist: List<Track> = emptyList(),
     val filteredPlaylist: List<Track> = emptyList(),
@@ -71,7 +78,20 @@ data class UiState(
     val playlists: List<Playlist> = emptyList(),
     val sortOrder: SortOrder = SortOrder.LAST_ADDED,
     val searchQuery: String = "",
-    val selectedPlaylistId: String? = null
+    val selectedPlaylistId: String? = null,
+    // --- AUDIO ENGINE STATE ---
+    val masterVolume: Float = 1.0f,
+    // --- EQUALIZER & VISUALIZER STATE ---
+    val eqBands: List<Float> = listOf(0.5f, 0.5f, 0.5f, 0.5f, 0.5f),
+    val selectedPreset: String = "Flat",
+    val eqPresets: List<EqPreset> = listOf(
+        EqPreset("Flat", listOf(0.5f, 0.5f, 0.5f, 0.5f, 0.5f)),
+        EqPreset("Bass Boost", listOf(0.9f, 0.8f, 0.5f, 0.3f, 0.2f)),
+        EqPreset("Vocals", listOf(0.2f, 0.4f, 0.9f, 0.8f, 0.5f)),
+        EqPreset("High Hat", listOf(0.1f, 0.2f, 0.3f, 0.7f, 0.9f)),
+        EqPreset("Cinema", listOf(0.8f, 0.6f, 0.4f, 0.6f, 0.8f))
+    ),
+    val visualizerData: List<Float> = List(20) { 0.1f }
 )
 
 class MusicViewModel(application: Application) : AndroidViewModel(application) {
@@ -368,19 +388,101 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     private fun startProgressPolling() {
         progressJob?.cancel()
         progressJob = viewModelScope.launch {
+            var tick = 0f
             while (true) {
                 val player = controller
                 if (player != null && player.isPlaying) {
                     val pos = player.currentPosition
                     val dur = player.duration.coerceAtLeast(1)
+                    
+                    // Generate fluid visualizer data
+                    tick += 0.25f
+                    val bands = _uiState.value.eqBands
+                    val newData = List(20) { i ->
+                        val eqImpact = bands[i % bands.size]
+                        (eqImpact * 0.4f + kotlin.math.sin(tick + i) * 0.3f + 0.3f).coerceIn(0.1f, 1.0f)
+                    }
+
                     _uiState.update { it.copy(
                         progress = pos.toFloat() / dur.toFloat(),
                         currentPosition = pos,
-                        duration = dur
+                        duration = dur,
+                        visualizerData = newData
                     ) }
+                } else {
+                    if (_uiState.value.visualizerData.any { it > 0.11f }) {
+                        _uiState.update { state ->
+                            state.copy(visualizerData = state.visualizerData.map { (it * 0.85f).coerceAtLeast(0.1f) })
+                        }
+                    }
                 }
-                delay(100)
+                delay(50)
             }
+        }
+    }
+
+    fun updateEqBand(index: Int, value: Float) {
+        _uiState.update { state ->
+            val newBands = state.eqBands.toMutableList()
+            if (index in newBands.indices) {
+                newBands[index] = value
+                
+                // --- SYNC WITH AUDIO ENGINE ---
+                sendEqUpdateToService(index, value)
+            }
+            state.copy(eqBands = newBands, selectedPreset = "Custom")
+        }
+    }
+
+    fun applyPreset(name: String) {
+        _uiState.update { state ->
+            val preset = state.eqPresets.find { it.name == name }
+            if (preset != null) {
+                preset.bands.forEachIndexed { index, value ->
+                    sendEqUpdateToService(index, value)
+                }
+                state.copy(eqBands = preset.bands, selectedPreset = name)
+            } else state
+        }
+    }
+
+    fun setMasterVolume(value: Float) {
+        val player = controller ?: return
+        player.volume = value
+        _uiState.update { it.copy(masterVolume = value) }
+    }
+
+    private fun sendEqUpdateToService(index: Int, value: Float) {
+        val mediaController = controller ?: return
+        val level = ((value - 0.5f) * 3000).toInt().toShort() // Convert 0..1 to -1500..1500 mB
+        val args = Bundle().apply {
+            putInt("band_index", index)
+            putShort("level", level)
+        }
+        mediaController.sendCustomCommand(SessionCommand("UPDATE_EQ", Bundle.EMPTY), args)
+    }
+
+    fun saveCustomPreset(name: String) {
+        _uiState.update { state ->
+            val newPreset = EqPreset(name, state.eqBands.toList())
+            state.copy(
+                eqPresets = state.eqPresets + newPreset,
+                selectedPreset = name
+            )
+        }
+    }
+
+    fun deletePreset(name: String) {
+        _uiState.update { state ->
+            // Don't delete built-in presets (just a safety check)
+            val builtIn = listOf("Flat", "Bass Boost", "Vocals", "High Hat", "Cinema")
+            if (name in builtIn) return@update state
+            
+            val newPresets = state.eqPresets.filter { it.name != name }
+            state.copy(
+                eqPresets = newPresets,
+                selectedPreset = if (state.selectedPreset == name) "Flat" else state.selectedPreset
+            )
         }
     }
 

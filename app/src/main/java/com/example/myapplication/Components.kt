@@ -27,24 +27,24 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import androidx.compose.ui.geometry.Rect
 
 @Composable
 fun ThreeDPlayButton(
     onClick: () -> Unit,
     isPlaying: Boolean,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
     val scale by animateFloatAsState(
         targetValue = if (isPressed) 0.92f else 1f,
         animationSpec = spring(dampingRatio = 0.6f, stiffness = 400f),
-        label = "ButtonScale"
+        label = "ButtonScale",
     )
 
     val themeColor = MaterialTheme.colorScheme.primary
@@ -65,7 +65,7 @@ fun ThreeDPlayButton(
                         brush = Brush.radialGradient(
                             colors = listOf(themeColor.copy(alpha = glowAlpha), Color.Transparent),
                             center = center,
-                            radius = size.maxDimension * 0.9f
+                            radius = size.maxDimension * 0.9f,
                         ),
                         radius = size.maxDimension * 0.9f,
                         center = center
@@ -95,7 +95,7 @@ fun ThreeDPlayButton(
                 val rimColor = if (isDark) Color.White.copy(alpha = rimAlpha) else Color.Black.copy(alpha = rimAlpha)
                 drawCircle(
                     color = rimColor,
-                    radius = size.maxDimension / 2 - 0.5.dp.toPx(),
+                    radius = (size.maxDimension / 2) - 0.5.dp.toPx(),
                     center = center,
                     style = Stroke(width = 1.2.dp.toPx())
                 )
@@ -135,7 +135,7 @@ fun ModernFluidBar(
 ) {
     val themeColor = MaterialTheme.colorScheme.primary
     val isDark = MaterialTheme.colorScheme.background == Color.Black
-    var isTouching by remember { mutableStateOf(false) }
+    var isTouching by remember { mutableStateOf(value = false) }
 
     val interactionScale by animateFloatAsState(
         targetValue = if (isTouching) 1.6f else 1f,
@@ -185,7 +185,7 @@ fun ModernFluidBar(
             drawRoundRect(
                 color = themeColor.copy(alpha = if (isDark) 0.08f else 0.04f),
                 size = Size(width, 4.dp.toPx()),
-                topLeft = Offset(0f, height / 2 - 2.dp.toPx()),
+                topLeft = Offset(0f, (height / 2) - 2.dp.toPx()),
                 cornerRadius = CornerRadius(2.dp.toPx())
             )
 
@@ -194,7 +194,7 @@ fun ModernFluidBar(
                     colors = listOf(themeColor.copy(alpha = 0.35f), themeColor)
                 ),
                 size = Size(width * progress, 4.dp.toPx()),
-                topLeft = Offset(0f, height / 2 - 2.dp.toPx()),
+                topLeft = Offset(0f, (height / 2) - 2.dp.toPx()),
                 cornerRadius = CornerRadius(2.dp.toPx())
             )
 
@@ -220,7 +220,7 @@ fun ModernFluidBar(
             } else {
                 drawRoundRect(
                     color = themeColor,
-                    topLeft = Offset(indicatorX - 1.25.dp.toPx(), height / 2 - 10.dp.toPx()),
+                    topLeft = Offset(indicatorX - 1.25.dp.toPx(), (height / 2) - 10.dp.toPx()),
                     size = Size(2.5.dp.toPx(), 20.dp.toPx()),
                     cornerRadius = CornerRadius(1.25.dp.toPx())
                 )
@@ -236,14 +236,15 @@ fun MiniPlayer(
     artworkUri: String?,
     isPlaying: Boolean,
     onTogglePlay: () -> Unit,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     val themeColor = MaterialTheme.colorScheme.primary
     val isDark = MaterialTheme.colorScheme.background == Color.Black
 
     Surface(
         color = if (isDark) Color(0xFF1A1A1A) else Color(0xFFF9F9F9),
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 8.dp)
             .height(72.dp)
@@ -331,7 +332,6 @@ fun TrackListItem(
     isPlaying: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    // NEW: Optional content to show at the end of the item (e.g., three-dot menu)
     trailingContent: @Composable (RowScope.() -> Unit)? = null
 ) {
     val themeColor = MaterialTheme.colorScheme.primary
@@ -412,20 +412,18 @@ fun LibraryBottomNavigation(
     isDarkTheme: Boolean,
     onThemeToggle: () -> Unit,
     currentTab: String,
-    onTabSelect: (String) -> Unit
+    onTabSelect: (String) -> Unit,
+    modifier: Modifier = Modifier
 ) {
-    val isDark = isDarkTheme
     val backgroundColor = MaterialTheme.colorScheme.surfaceVariant
     val themeColor = MaterialTheme.colorScheme.primary
 
-    // Base wrapper representing the bottom section dock
     Box(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .height(100.dp),
         contentAlignment = Alignment.BottomCenter
     ) {
-        // LAYER 1: The Base Section with top edge curved cutouts (hugs the screen bottom)
         Canvas(
             modifier = Modifier
                 .fillMaxWidth()
@@ -436,39 +434,27 @@ fun LibraryBottomNavigation(
             val cutoutRadius = 24.dp.toPx()
 
             val path = Path().apply {
-                // Start from top-left with an inward curving top-left corner
                 moveTo(0f, cutoutRadius)
                 arcTo(
-                    rect = androidx.compose.ui.geometry.Rect(-cutoutRadius, 0f, cutoutRadius, cutoutRadius * 2f),
+                    rect = Rect(-cutoutRadius, 0f, cutoutRadius, cutoutRadius * 2f),
                     startAngleDegrees = 180f,
                     sweepAngleDegrees = -90f,
                     forceMoveTo = false
                 )
-
-                // Straight across the top middle section behind the pill
                 lineTo(width - cutoutRadius, 0f)
-
-                // Top-right inverted cutout corner
                 arcTo(
-                    rect = androidx.compose.ui.geometry.Rect(width - cutoutRadius, 0f, width + cutoutRadius, cutoutRadius * 2f),
+                    rect = Rect(width - cutoutRadius, 0f, width + cutoutRadius, cutoutRadius * 2f),
                     startAngleDegrees = 270f,
                     sweepAngleDegrees = -90f,
                     forceMoveTo = false
                 )
-
-                // Down to bottom-right and across bottom edge
                 lineTo(width, height)
                 lineTo(0f, height)
                 close()
             }
-
-            drawPath(
-                path = path,
-                color = backgroundColor.copy(alpha = 0.6f) // Slightly translucent base layer
-            )
+            drawPath(path = path, color = backgroundColor.copy(alpha = 0.6f))
         }
 
-        // LAYER 2: The Floating Nav Pill sitting cleanly inside/over the base cutout
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -478,12 +464,12 @@ fun LibraryBottomNavigation(
                     shadowElevation = 16.dp.toPx()
                     shape = RoundedCornerShape(32.dp)
                     clip = true
-                    spotShadowColor = if (isDark) Color.White.copy(alpha = 0.25f) else Color.Black.copy(alpha = 0.35f)
-                    ambientShadowColor = if (isDark) Color.White.copy(alpha = 0.15f) else Color.Black.copy(alpha = 0.15f)
+                    spotShadowColor = if (isDarkTheme) Color.White.copy(alpha = 0.25f) else Color.Black.copy(alpha = 0.35f)
+                    ambientShadowColor = if (isDarkTheme) Color.White.copy(alpha = 0.15f) else Color.Black.copy(alpha = 0.15f)
                 }
                 .background(backgroundColor)
                 .drawBehind {
-                    val rimColor = if (isDark) Color.White.copy(alpha = 0.25f) else Color.Black.copy(alpha = 0.1f)
+                    val rimColor = if (isDarkTheme) Color.White.copy(alpha = 0.25f) else Color.Black.copy(alpha = 0.1f)
                     drawRoundRect(
                         color = rimColor,
                         style = Stroke(width = 1.5.dp.toPx()),
@@ -493,54 +479,338 @@ fun LibraryBottomNavigation(
             contentAlignment = Alignment.Center
         ) {
             Row(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(horizontal = 24.dp),
+                modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 IconButton(onClick = { onTabSelect("home") }) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(
-                            imageVector = Icons.Default.Home,
-                            contentDescription = "Home",
-                            tint = if (currentTab == "home") themeColor else MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(24.dp)
-                        )
-                    }
+                    Icon(
+                        imageVector = Icons.Default.Home,
+                        contentDescription = "Home",
+                        tint = if (currentTab == "home") themeColor else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
-
                 IconButton(onClick = { onTabSelect("library") }) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(
-                            imageVector = Icons.Default.LibraryMusic,
-                            contentDescription = "Library",
-                            tint = if (currentTab == "library") themeColor else MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(24.dp)
-                        )
-                    }
+                    Icon(
+                        imageVector = Icons.Default.LibraryMusic,
+                        contentDescription = "Library",
+                        tint = if (currentTab == "library") themeColor else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
-
+                IconButton(onClick = { onTabSelect("equalizer") }) {
+                    Icon(
+                        imageVector = Icons.Default.Tune,
+                        contentDescription = "Equalizer",
+                        tint = if (currentTab == "equalizer") themeColor else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
                 IconButton(onClick = onThemeToggle) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(
-                            imageVector = if (isDark) Icons.Default.DarkMode else Icons.Default.LightMode,
-                            contentDescription = "Theme",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(24.dp)
-                        )
-                    }
+                    Icon(
+                        imageVector = if (isDarkTheme) Icons.Default.DarkMode else Icons.Default.LightMode,
+                        contentDescription = "Theme",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             }
         }
     }
 }
+
+@Composable
+fun DynamicEqualizer(
+    data: List<Float>,
+    modifier: Modifier = Modifier
+) {
+    val themeColor = MaterialTheme.colorScheme.primary
+    
+    val animatedData = data.map { 
+        animateFloatAsState(
+            targetValue = it,
+            animationSpec = spring(stiffness = Spring.StiffnessLow, dampingRatio = Spring.DampingRatioNoBouncy),
+            label = "BarHeight"
+        ).value
+    }
+
+    Box(
+        modifier = modifier
+            .fillMaxWidth(),
+        contentAlignment = Alignment.Center
+    ) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val barCount = animatedData.size
+            val spacing = 6.dp.toPx()
+            val totalSpacing = spacing * (barCount - 1)
+            val barWidth = (size.width - totalSpacing) / barCount
+            
+            animatedData.forEachIndexed { index, value ->
+                val x = index * (barWidth + spacing)
+                // SCALE: make bars more visible even at low values
+                val scaledValue = (value * 1.2f).coerceIn(0.1f, 1f)
+                val barHeight = size.height * scaledValue
+                val y = size.height - barHeight
+
+                drawRoundRect(
+                    brush = Brush.verticalGradient(
+                        colors = listOf(themeColor.copy(alpha = 0.35f), Color.Transparent)
+                    ),
+                    topLeft = Offset(x, y - 10.dp.toPx()),
+                    size = Size(barWidth, barHeight + 10.dp.toPx()),
+                    cornerRadius = CornerRadius(barWidth / 2)
+                )
+
+                drawRoundRect(
+                    brush = Brush.verticalGradient(
+                        colors = listOf(themeColor, themeColor.copy(alpha = 0.6f))
+                    ),
+                    topLeft = Offset(x, y),
+                    size = Size(barWidth, barHeight),
+                    cornerRadius = CornerRadius(barWidth / 2)
+                )
+
+                drawRoundRect(
+                    color = Color.White.copy(alpha = 0.4f),
+                    topLeft = Offset(x + 1.5.dp.toPx(), y + 1.5.dp.toPx()),
+                    size = Size(barWidth - 3.dp.toPx(), 3.dp.toPx()),
+                    cornerRadius = CornerRadius(1.5.dp.toPx())
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun MasterVolumeBar(
+    value: Float,
+    onValueChange: (Float) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val themeColor = MaterialTheme.colorScheme.primary
+    var isTouching by remember { mutableStateOf(false) }
+
+    val interactionScale by animateFloatAsState(
+        targetValue = if (isTouching) 1.1f else 1f,
+        animationSpec = spring(stiffness = Spring.StiffnessLow),
+        label = "VolScale"
+    )
+
+    Column(modifier = modifier.fillMaxWidth()) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(bottom = 8.dp)
+        ) {
+            Icon(
+                imageVector = when {
+                    value > 0.6f -> Icons.Default.VolumeUp
+                    value > 0f -> Icons.Default.VolumeDown
+                    else -> Icons.Default.VolumeOff
+                },
+                contentDescription = null,
+                tint = themeColor,
+                modifier = Modifier.size(20.dp)
+            )
+            Spacer(modifier = Modifier.width(12.dp))
+            Text(
+                "MASTER VOLUME",
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Black,
+                letterSpacing = 1.sp,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Spacer(modifier = Modifier.weight(1f))
+            Text(
+                "${(value * 100).toInt()}%",
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.Bold,
+                color = themeColor
+            )
+        }
+
+        BoxWithConstraints(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(48.dp)
+                .pointerInput(Unit) {
+                    awaitPointerEventScope {
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            val change = event.changes.first()
+                            if (change.pressed) {
+                                isTouching = true
+                                val newValue = (change.position.x / size.width).coerceIn(0f, 1f)
+                                onValueChange(newValue)
+                            }
+                            if (event.changes.all { !it.pressed }) {
+                                isTouching = false
+                            }
+                        }
+                    }
+                },
+            contentAlignment = Alignment.Center
+        ) {
+            val constraintsWidth = maxWidth
+            
+            // Track
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(8.dp)
+                    .clip(CircleShape)
+                    .background(themeColor.copy(alpha = 0.15f))
+            )
+
+            // Progress
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(value)
+                    .height(8.dp)
+                    .align(Alignment.CenterStart)
+                    .clip(CircleShape)
+                    .background(
+                        brush = Brush.horizontalGradient(
+                            listOf(themeColor.copy(alpha = 0.7f), themeColor)
+                        )
+                    )
+            )
+
+            // Thumb
+            Box(
+                modifier = Modifier
+                    .align(Alignment.CenterStart)
+                    .offset(x = (constraintsWidth - 24.dp) * value)
+                    .size(24.dp)
+                    .graphicsLayer {
+                        scaleX = interactionScale
+                        scaleY = interactionScale
+                        shadowElevation = if (isTouching) 12.dp.toPx() else 4.dp.toPx()
+                        shape = CircleShape
+                        clip = true
+                    }
+                    .background(themeColor)
+                    .drawBehind {
+                        drawCircle(
+                            color = Color.White.copy(alpha = 0.3f),
+                            radius = (size.maxDimension / 2) - 0.5.dp.toPx(),
+                            style = Stroke(width = 1.dp.toPx())
+                        )
+                    }
+            )
+        }
+    }
+}
+
+@Composable
+fun EqualizerSlider(
+    label: String,
+    value: Float,
+    onValueChange: (Float) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val themeColor = MaterialTheme.colorScheme.primary
+    var isDragging by remember { mutableStateOf(false) }
+    val sliderHeight = 160.dp
+
+    val interactionScale by animateFloatAsState(
+        targetValue = if (isDragging) 1.25f else 1f,
+        animationSpec = spring(stiffness = Spring.StiffnessLow, dampingRatio = Spring.DampingRatioLowBouncy),
+        label = "SliderScale"
+    )
+
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = modifier.width(54.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .height(sliderHeight + 24.dp) // Added vertical padding
+                .width(54.dp) // Wide touch area
+                .pointerInput(Unit) {
+                    awaitPointerEventScope {
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            val change = event.changes.first()
+                            if (change.pressed) {
+                                isDragging = true
+                                // Accounting for 12dp vertical padding on each side
+                                val relativeY = (change.position.y - 12.dp.toPx()).coerceIn(0f, sliderHeight.toPx())
+                                val newValue = 1f - (relativeY / sliderHeight.toPx())
+                                onValueChange(newValue)
+                            }
+                            if (event.changes.all { !it.pressed }) {
+                                isDragging = false
+                            }
+                        }
+                    }
+                },
+            contentAlignment = Alignment.Center
+        ) {
+            // Track
+            Box(
+                modifier = Modifier
+                    .height(sliderHeight)
+                    .width(4.dp)
+                    .clip(CircleShape)
+                    .background(themeColor.copy(alpha = 0.15f))
+            )
+
+            // Thumb Container
+            Box(
+                modifier = Modifier.height(sliderHeight).width(32.dp),
+                contentAlignment = Alignment.BottomCenter
+            ) {
+                 // Thumb
+                 Box(
+                    modifier = Modifier
+                        .offset(y = (-sliderHeight * value))
+                        .size(26.dp)
+                        .graphicsLayer {
+                            scaleX = interactionScale
+                            scaleY = interactionScale
+                            shadowElevation = if (isDragging) 16.dp.toPx() else 4.dp.toPx()
+                            shape = CircleShape
+                            clip = true
+                        }
+                        .background(
+                            brush = Brush.radialGradient(
+                                colors = if (isDragging) listOf(themeColor, themeColor.copy(alpha = 0.8f))
+                                else listOf(themeColor.copy(alpha = 0.95f), themeColor)
+                            )
+                        )
+                        .drawBehind {
+                            if (isDragging) {
+                                drawCircle(
+                                    color = themeColor.copy(alpha = 0.25f),
+                                    radius = size.maxDimension * 1.6f,
+                                    style = Stroke(width = 2.dp.toPx())
+                                )
+                            }
+                            drawCircle(
+                                color = Color.White.copy(alpha = 0.3f),
+                                radius = (size.maxDimension / 2) - 0.5.dp.toPx(),
+                                style = Stroke(width = 1.dp.toPx())
+                            )
+                        }
+                )
+            }
+        }
+        
+        Spacer(modifier = Modifier.height(10.dp))
+        
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            fontWeight = FontWeight.Bold,
+            fontSize = 10.sp
+        )
+    }
+}
+
 @Composable
 fun SleekSearchBar(
     query: String,
     onQueryChange: (String) -> Unit,
-    placeholder: String = "Search...",
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    placeholder: String = "Search..."
 ) {
     val isDark = MaterialTheme.colorScheme.background == Color.Black
     
