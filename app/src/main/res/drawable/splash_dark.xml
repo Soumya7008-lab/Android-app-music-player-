@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Use the exact metallic background image provided for the icon -->
+    <item android:drawable="@drawable/ic_launcher_background_3d" />
+
+    <!-- Optional: Center the music note in the splash screen -->
+    <item
+        android:drawable="@drawable/ic_launcher_foreground_3d"
+        android:gravity="center"
+        android:width="120dp"
+        android:height="120dp" />
+</layer-list>
