@@ -142,6 +142,24 @@ class MusicService : MediaLibraryService() {
 
     private inner class CustomMediaSessionCallback : MediaLibrarySession.Callback {
         
+        override fun onConnect(
+            session: MediaSession,
+            controller: MediaSession.ControllerInfo
+        ): MediaSession.ConnectionResult {
+            // CRITICAL: Whitelist ALL custom commands.
+            // Without this, Media3 blocks every sendCustomCommand() from the MediaController.
+            val sessionCommands = MediaSession.ConnectionResult.DEFAULT_SESSION_AND_LIBRARY_COMMANDS.buildUpon()
+                .add(SessionCommand("UPDATE_EQ", Bundle.EMPTY))
+                .add(SessionCommand("TOGGLE_16D", Bundle.EMPTY))
+                .add(SessionCommand("UPDATE_TITAN_PARAMS", Bundle.EMPTY))
+                .add(SessionCommand("UPDATE_TEMPO", Bundle.EMPTY))
+                .build()
+
+            return MediaSession.ConnectionResult.AcceptedResultBuilder(session)
+                .setAvailableSessionCommands(sessionCommands)
+                .build()
+        }
+
         override fun onGetLibraryRoot(
             session: MediaLibrarySession,
             browser: MediaSession.ControllerInfo,
