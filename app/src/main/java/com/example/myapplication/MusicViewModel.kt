@@ -37,7 +37,7 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
 
-private val Context.dataStore by preferencesDataStore(name = "music_prefs")
+val Context.dataStore by preferencesDataStore(name = "music_prefs")
 
 enum class SortOrder {
     NAME, LAST_ADDED
@@ -362,6 +362,87 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         } else {
             // If track not in list, just play it alone
             playPlaylist(listOf(track), 0, null)
+        }
+    }
+
+    fun playFromSearch(query: String) {
+        viewModelScope.launch {
+            // Wait for controller to be ready
+            while (controller == null || _uiState.value.isLoading) {
+                delay(100)
+            }
+
+            val lowerQuery = query.lowercase().trim()
+            val state = _uiState.value
+            
+            // 1. Check if user asked for a playlist by name
+            val matchedPlaylist = state.playlists.find { 
+                it.name.lowercase().contains(lowerQuery) || 
+                lowerQuery.contains(it.name.lowercase()) 
+            }
+            
+            val tracksToPlay = if (matchedPlaylist != null && matchedPlaylist.tracks.isNotEmpty()) {
+                matchedPlaylist.tracks
+            } else if (lowerQuery.isNotBlank()) {
+                // 2. Otherwise search for songs/artists
+                val matches = state.playlist.filter {
+                    it.title.lowercase().contains(lowerQuery) ||
+                    it.artist.lowercase().contains(lowerQuery)
+                }
+                if (matches.isNotEmpty()) matches else state.playlist
+            } else {
+                // 3. Play everything if no specific query
+                state.playlist
+            }
+            
+            if (tracksToPlay.isNotEmpty()) {
+                playPlaylist(tracksToPlay, 0, matchedPlaylist?.id)
+            }
+        }
+    }
+
+    fun playAudioFromUri(uri: Uri) {
+        viewModelScope.launch {
+            // Wait for controller to be ready
+            while (controller == null) {
+                delay(100)
+            }
+
+            val existingTrack = _uiState.value.playlist.find { it.data == uri.toString() }
+            if (existingTrack != null) {
+                setTrack(existingTrack)
+                return@launch
+            }
+
+            var title = "Unknown"
+            val artist = "Unknown Artist"
+            
+            if (uri.scheme == "content") {
+                try {
+                    app.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                        if (cursor.moveToFirst()) {
+                            val titleIndex = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                            if (titleIndex != -1) {
+                                title = cursor.getString(titleIndex) ?: "Unknown"
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.e("MusicViewModel", "Error fetching URI metadata", e)
+                }
+            } else if (uri.scheme == "file") {
+                title = uri.lastPathSegment ?: "Unknown"
+            }
+
+            val tempTrack = Track(
+                id = uri.hashCode().toLong(),
+                title = title,
+                artist = artist,
+                data = uri.toString(),
+                duration = "0:00"
+            )
+            
+            setTrack(tempTrack)
         }
     }
 

@@ -95,6 +95,7 @@ dependencies {
     implementation(libs.androidx.media3.common)
     implementation(libs.androidx.media3.session)
     implementation(libs.androidx.datastore.preferences)
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-guava:1.7.3")
     implementation(libs.coil.compose)
     testImplementation(libs.junit)
     androidTestImplementation(platform(libs.androidx.compose.bom))

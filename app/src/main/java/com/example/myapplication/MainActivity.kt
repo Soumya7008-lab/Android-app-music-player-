@@ -1,5 +1,6 @@
 package com.example.myapplication
 
+import android.app.SearchManager
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -67,6 +68,9 @@ class MainActivity : ComponentActivity() {
         
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        
+        handleIntent(intent)
+        
         setContent {
             var darkTheme by remember { mutableStateOf(isDark) }
             AppTheme(darkTheme = darkTheme) {
@@ -104,6 +108,32 @@ class MainActivity : ComponentActivity() {
         // Apply the icon change only when the user leaves the app
         ThemeManager.applyIconChange(this)
         super.onStop()
+    }
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleIntent(intent)
+    }
+
+    private fun handleIntent(intent: android.content.Intent?) {
+        if (intent == null) return
+        
+        if (intent.action == android.content.Intent.ACTION_VIEW) {
+            intent.data?.let { uri ->
+                val viewModel = androidx.lifecycle.ViewModelProvider(this)[MusicViewModel::class.java]
+                viewModel.playAudioFromUri(uri)
+            }
+        } else if (intent.action == android.media.AudioManager.ACTION_AUDIO_BECOMING_NOISY) {
+            // Can be handled here or in the service
+        } else if (intent.action == "android.media.action.MEDIA_PLAY_FROM_SEARCH") {
+            val query = intent.getStringExtra(SearchManager.QUERY) ?: ""
+            // The Media3 session service also handles this when running,
+            // but waking the app through the Activity ensures the UI is ready
+            // and the ViewModel can connect to the MediaController!
+            val viewModel = androidx.lifecycle.ViewModelProvider(this)[MusicViewModel::class.java]
+            viewModel.playFromSearch(query)
+        }
     }
 }
 

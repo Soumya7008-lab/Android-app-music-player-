@@ -2,12 +2,15 @@ package com.example.myapplication.audio
 
 import android.app.PendingIntent
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
+import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaMetadata
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.Renderer
@@ -20,14 +23,27 @@ import androidx.media3.exoplayer.metadata.MetadataOutput
 import androidx.media3.exoplayer.text.TextOutput
 import androidx.media3.exoplayer.video.VideoRendererEventListener
 import com.example.myapplication.audio.processors.SpatialAudioProcessor
+import androidx.datastore.preferences.core.stringPreferencesKey
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
+import com.example.myapplication.Track
+import com.example.myapplication.Playlist
+import com.example.myapplication.dataStore
+import com.example.myapplication.data.MediaScanner
+import androidx.media3.session.MediaLibraryService
+import androidx.media3.session.MediaLibraryService.MediaLibrarySession
 import androidx.media3.session.MediaSession
-import androidx.media3.session.MediaSessionService
 import androidx.media3.session.SessionCommand
 import androidx.media3.session.SessionError
 import androidx.media3.session.SessionResult
+import androidx.media3.session.LibraryResult
+import com.google.common.collect.ImmutableList
 import com.example.myapplication.MainActivity
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.guava.future
 
 /**
  * MUSIC SERVICE — BULLETPROOF AUDIO PIPELINE
@@ -39,13 +55,14 @@ import com.google.common.util.concurrent.ListenableFuture
  * Pipeline: Decoder → SpatialAudioProcessor (EQ + 16D + Dynamics) → AudioTrack
  */
 @UnstableApi
-class MusicService : MediaSessionService() {
+class MusicService : MediaLibraryService() {
 
     companion object {
         private const val TAG = "MusicService"
+        private const val ROOT_ID = "root_id"
     }
 
-    private var mediaSession: MediaSession? = null
+    private var mediaSession: MediaLibrarySession? = null
     private val spatialAudioProcessor = SpatialAudioProcessor()
 
     // TITAN ENGINE PARAMETERS (defaults: flat EQ, moderate settings)
@@ -54,9 +71,14 @@ class MusicService : MediaSessionService() {
     private var titanSoundstage = 1.0f
     private var titanRotationSpeed = 7.0f
     private var titanEqGains = floatArrayOf(0f, 0f, 0f, 0f, 0f)
+    
+    private val serviceScope = CoroutineScope(Dispatchers.IO)
+    private lateinit var mediaScanner: MediaScanner
 
     override fun onCreate() {
         super.onCreate()
+        
+        mediaScanner = MediaScanner(this)
 
         val audioAttributes = AudioAttributes.Builder()
             .setUsage(C.USAGE_MEDIA)
@@ -107,9 +129,8 @@ class MusicService : MediaSessionService() {
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
 
-        mediaSession = MediaSession.Builder(this, player)
+        mediaSession = MediaLibrarySession.Builder(this, player, CustomMediaSessionCallback())
             .setSessionActivity(pendingIntent)
-            .setCallback(CustomMediaSessionCallback())
             .build()
     }
 
@@ -119,7 +140,178 @@ class MusicService : MediaSessionService() {
         )
     }
 
-    private inner class CustomMediaSessionCallback : MediaSession.Callback {
+    private inner class CustomMediaSessionCallback : MediaLibrarySession.Callback {
+        
+        override fun onGetLibraryRoot(
+            session: MediaLibrarySession,
+            browser: MediaSession.ControllerInfo,
+            params: MediaLibraryService.LibraryParams?
+        ): ListenableFuture<LibraryResult<MediaItem>> {
+            // Google Assistant and Android Auto require a valid root to browse
+            val rootItem = MediaItem.Builder()
+                .setMediaId(ROOT_ID)
+                .setMediaMetadata(
+                    MediaMetadata.Builder()
+                        .setIsBrowsable(true)
+                        .setIsPlayable(false)
+                        .setMediaType(MediaMetadata.MEDIA_TYPE_FOLDER_MIXED)
+                        .setTitle("My Music")
+                        .build()
+                )
+                .build()
+            return Futures.immediateFuture(LibraryResult.ofItem(rootItem, null))
+        }
+
+        override fun onGetChildren(
+            session: MediaLibrarySession,
+            browser: MediaSession.ControllerInfo,
+            parentId: String,
+            page: Int,
+            pageSize: Int,
+            params: MediaLibraryService.LibraryParams?
+        ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> {
+            return serviceScope.future {
+                val (tracks, _) = getFinalizedTracks()
+                val items = tracks.map { track ->
+                    MediaItem.Builder()
+                        .setUri(track.data)
+                        .setMediaId(track.data)
+                        .setMediaMetadata(
+                            MediaMetadata.Builder()
+                                .setTitle(track.title)
+                                .setArtist(track.artist)
+                                .setIsPlayable(true)
+                                .build()
+                        )
+                        .build()
+                }
+                LibraryResult.ofItemList(items, null)
+            }
+        }
+        
+        private suspend fun getFinalizedTracks(): Pair<List<Track>, List<Playlist>> {
+            val rawTracks = mediaScanner.scanAudioFiles()
+            
+            val overridesStr = dataStore.data.map { it[stringPreferencesKey("track_overrides")] ?: "" }.first()
+            val overrideMap = if (overridesStr.isEmpty()) emptyMap() else {
+                try {
+                    overridesStr.split(";;").associate {
+                        val parts = it.split("||")
+                        parts[0].toLong() to (if (parts[1] == "null") null else parts[1] to if (parts[2] == "null") null else parts[2])
+                    }
+                } catch (e: Exception) { emptyMap() }
+            }
+
+            val finalizedTracks = rawTracks.map { track ->
+                overrideMap[track.id]?.let { ov ->
+                    track.copy(
+                        title = ov.first ?: track.title,
+                        customArtworkUri = ov.second ?: track.customArtworkUri
+                    )
+                } ?: track
+            }
+
+            val playlistsStr = dataStore.data.map { it[stringPreferencesKey("playlists_data")] ?: "" }.first()
+            val playlists = try {
+                if (playlistsStr.isEmpty()) emptyList()
+                else playlistsStr.split(";;").map {
+                    val parts = it.split("||")
+                    val id = parts[0]
+                    val name = parts[1]
+                    val isDef = parts[2] == "true"
+                    val trackIds = parts[3].split(",").filter { it.isNotEmpty() }.map { it.toLong() }.toSet()
+                    val artwork = if (parts.size > 4 && parts[4] != "null") parts[4] else null
+                    Playlist(id, name, finalizedTracks.filter { track -> track.id in trackIds }, isDef, artwork)
+                }
+            } catch (e: Exception) { emptyList() }
+
+            return finalizedTracks to playlists
+        }
+
+        override fun onAddMediaItems(
+            mediaSession: MediaSession,
+            controller: MediaSession.ControllerInfo,
+            mediaItems: MutableList<MediaItem>
+        ): ListenableFuture<MutableList<MediaItem>> {
+            // Check if this is a voice search from Google Assistant
+            val isVoiceSearch = mediaItems.size == 1 && mediaItems[0].requestMetadata.searchQuery != null
+            if (isVoiceSearch) {
+                val query = mediaItems[0].requestMetadata.searchQuery!!
+                Log.i(TAG, "🎤 Voice Search Query: $query")
+
+                return serviceScope.future {
+                    val (tracks, playlists) = getFinalizedTracks()
+                    val lowerQuery = query.lowercase().trim()
+                    
+                    // 1. Check if user asked for a playlist by name
+                    val matchedPlaylist = playlists.find { 
+                        it.name.lowercase().contains(lowerQuery) || 
+                        lowerQuery.contains(it.name.lowercase()) 
+                    }
+                    
+                    val tracksToPlay = if (matchedPlaylist != null && matchedPlaylist.tracks.isNotEmpty()) {
+                        Log.i(TAG, "🎤 Voice Search matched playlist: ${matchedPlaylist.name}")
+                        matchedPlaylist.tracks
+                    } else if (lowerQuery.isNotBlank()) {
+                        // 2. Otherwise search for songs/artists
+                        val matches = tracks.filter {
+                            it.title.lowercase().contains(lowerQuery) ||
+                            it.artist.lowercase().contains(lowerQuery)
+                        }
+                        if (matches.isNotEmpty()) matches else tracks
+                    } else {
+                        // 3. Play everything if no specific query
+                        tracks
+                    }
+                    
+                    val items = tracksToPlay.map { track ->
+                        val metadata = MediaMetadata.Builder()
+                            .setTitle(track.title)
+                            .setArtist(track.artist)
+                            .setArtworkUri(track.customArtworkUri?.let { Uri.parse(it) })
+                            .setIsPlayable(true)
+                            .build()
+                        MediaItem.Builder()
+                            .setUri(track.data)
+                            .setMediaId(track.data)
+                            .setMediaMetadata(metadata)
+                            .build()
+                    }.toMutableList()
+                    
+                    items
+                }
+            }
+            return Futures.immediateFuture(mediaItems)
+        }
+
+        override fun onPlaybackResumption(
+            mediaSession: MediaSession,
+            controller: MediaSession.ControllerInfo
+        ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> {
+            return serviceScope.future {
+                val tracks = mediaScanner.scanAudioFiles()
+                if (tracks.isNotEmpty()) {
+                    val track = tracks.first()
+                    val metadata = MediaMetadata.Builder()
+                        .setTitle(track.title)
+                        .setArtist(track.artist)
+                        .setIsPlayable(true)
+                        .build()
+                    val mediaItem = MediaItem.Builder()
+                        .setUri(track.data)
+                        .setMediaId(track.data)
+                        .setMediaMetadata(metadata)
+                        .build()
+                    
+                    MediaSession.MediaItemsWithStartPosition(
+                        listOf(mediaItem), 0, 0
+                    )
+                } else {
+                    throw UnsupportedOperationException("No media available to resume")
+                }
+            }
+        }
+
         override fun onCustomCommand(
             session: MediaSession,
             controller: MediaSession.ControllerInfo,
@@ -162,7 +354,7 @@ class MusicService : MediaSessionService() {
         }
     }
 
-    override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? = mediaSession
+    override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession? = mediaSession
 
     override fun onDestroy() {
         mediaSession?.run {
