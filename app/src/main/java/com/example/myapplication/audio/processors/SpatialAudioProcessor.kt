@@ -27,6 +27,7 @@ class SpatialAudioProcessor : BaseAudioProcessor() {
     private val engine = TitanKotlinEngine()
     private var isFloat = false
     private var configured = false
+    private var samplesProcessed = 0L
 
     override fun onConfigure(inputAudioFormat: AudioFormat): AudioFormat {
         // Accept BOTH 16-bit integer PCM and 32-bit float PCM
@@ -117,5 +118,11 @@ class SpatialAudioProcessor : BaseAudioProcessor() {
         }
 
         buffer.flip()
+
+        // Heartbeat: log once per ~1 second of audio to verify processor is alive
+        samplesProcessed += (remaining / (if (isFloat) 4 else 2)).toLong()
+        if (samplesProcessed % 44100L < 2000L) {
+            Log.d(TAG, "♻️ PROCESSING: ${samplesProcessed} samples | spatial=${engine.spatialEnabled} | fmt=${if (isFloat) "FLOAT" else "16BIT"}")
+        }
     }
 }

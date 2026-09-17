@@ -3,15 +3,22 @@ package com.example.myapplication.audio
 import android.app.PendingIntent
 import android.content.Intent
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
-import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.exoplayer.DefaultRenderersFactory
-import androidx.media3.exoplayer.audio.AudioSink
+import androidx.media3.exoplayer.Renderer
+import androidx.media3.exoplayer.RenderersFactory
+import androidx.media3.exoplayer.audio.AudioRendererEventListener
 import androidx.media3.exoplayer.audio.DefaultAudioSink
+import androidx.media3.exoplayer.audio.MediaCodecAudioRenderer
+import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
+import androidx.media3.exoplayer.metadata.MetadataOutput
+import androidx.media3.exoplayer.text.TextOutput
+import androidx.media3.exoplayer.video.VideoRendererEventListener
 import com.example.myapplication.audio.processors.SpatialAudioProcessor
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
@@ -22,6 +29,15 @@ import com.example.myapplication.MainActivity
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 
+/**
+ * MUSIC SERVICE — BULLETPROOF AUDIO PIPELINE
+ *
+ * Instead of relying on DefaultRenderersFactory.buildAudioSink() (which may not
+ * be called on all Media3 versions), we create MediaCodecAudioRenderer DIRECTLY
+ * with our custom DefaultAudioSink that contains the SpatialAudioProcessor.
+ *
+ * Pipeline: Decoder → SpatialAudioProcessor (EQ + 16D + Dynamics) → AudioTrack
+ */
 @UnstableApi
 class MusicService : MediaSessionService() {
 
@@ -47,31 +63,38 @@ class MusicService : MediaSessionService() {
             .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
             .build()
 
-        // BUILD THE AUDIO SINK DIRECTLY with our processor in the chain
-        // This avoids any issues with buildAudioSink override signature changes across Media3 versions.
+        // STEP 1: Build AudioSink with our processor DIRECTLY in the chain
         val audioSink = DefaultAudioSink.Builder(this)
             .setAudioProcessors(arrayOf(spatialAudioProcessor))
             .build()
-        
-        Log.i(TAG, "AudioSink created with SpatialAudioProcessor in processing chain")
 
-        // Use a custom RenderersFactory that returns our pre-built audio sink
-        val renderersFactory = object : DefaultRenderersFactory(this) {
-            override fun buildAudioSink(
-                context: android.content.Context,
-                enableFloatOutput: Boolean,
-                enableAudioTrackPlaybackParams: Boolean
-            ): AudioSink {
-                Log.i(TAG, "buildAudioSink(3-param) called — returning custom sink with processor")
-                return audioSink
-            }
+        Log.i(TAG, "✅ AudioSink created with SpatialAudioProcessor")
+
+        // STEP 2: Create a RenderersFactory that builds MediaCodecAudioRenderer DIRECTLY
+        // This bypasses DefaultRenderersFactory entirely — no more relying on buildAudioSink overrides
+        val renderersFactory = RenderersFactory { handler: Handler,
+                                                  _: VideoRendererEventListener,
+                                                  audioRendererEventListener: AudioRendererEventListener,
+                                                  _: TextOutput,
+                                                  _: MetadataOutput ->
+            Log.i(TAG, "✅ RenderersFactory.createRenderers() called — building MediaCodecAudioRenderer with custom AudioSink")
+            arrayOf<Renderer>(
+                MediaCodecAudioRenderer(
+                    this@MusicService,
+                    MediaCodecSelector.DEFAULT,
+                    handler,
+                    audioRendererEventListener,
+                    audioSink
+                )
+            )
         }
 
+        // STEP 3: Build ExoPlayer with our custom renderers factory
         val player = ExoPlayer.Builder(this, renderersFactory)
             .setAudioAttributes(audioAttributes, true)
             .build()
 
-        Log.i(TAG, "ExoPlayer created with custom renderersFactory")
+        Log.i(TAG, "✅ ExoPlayer created with direct MediaCodecAudioRenderer pipeline")
 
         syncTitanParams()
 
@@ -119,7 +142,7 @@ class MusicService : MediaSessionService() {
                     titanSnappiness = args.getFloat("snappiness", titanSnappiness)
                     titanSoundstage = args.getFloat("soundstage", titanSoundstage)
                     syncTitanParams()
-                    Log.d(TAG, "Titan params: clarity=$titanClarity snap=$titanSnappiness stage=$titanSoundstage")
+                    Log.d(TAG, "Titan: clarity=$titanClarity snap=$titanSnappiness stage=$titanSoundstage")
                     return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
                 }
                 "UPDATE_TEMPO" -> {
@@ -131,7 +154,7 @@ class MusicService : MediaSessionService() {
                     val enabled = args.getBoolean("enabled")
                     spatialAudioProcessor.setEnabled(enabled)
                     syncTitanParams()
-                    Log.i(TAG, "16D spatial audio: $enabled")
+                    Log.i(TAG, "🔊 16D spatial audio: ${if (enabled) "ON" else "OFF"}")
                     return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
                 }
             }
