@@ -17,6 +17,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -32,6 +33,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import androidx.compose.ui.geometry.Rect
+import kotlin.math.*
+
+private const val TWO_PI = 6.2831853f
 
 @Composable
 fun ThreeDPlayButton(
@@ -41,58 +45,131 @@ fun ThreeDPlayButton(
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
-    val scale by animateFloatAsState(
-        targetValue = if (isPressed) 0.92f else 1f,
+    
+    val squishX by animateFloatAsState(
+        targetValue = if (isPressed) 1.15f else 1f,
+        animationSpec = spring(dampingRatio = 0.4f, stiffness = 300f),
+        label = "SquishX"
+    )
+    val squishY by animateFloatAsState(
+        targetValue = if (isPressed) 0.85f else 1f,
+        animationSpec = spring(dampingRatio = 0.4f, stiffness = 300f),
+        label = "SquishY"
+    )
+    val iconScale by animateFloatAsState(
+        targetValue = if (isPressed) 0.8f else 1f,
         animationSpec = spring(dampingRatio = 0.6f, stiffness = 400f),
-        label = "ButtonScale",
+        label = "IconScale"
     )
 
     val themeColor = MaterialTheme.colorScheme.primary
     val isDark = MaterialTheme.colorScheme.background == Color.Black
-    val surfaceColor = if (isDark) Color(0xFF1A1A1A) else Color(0xFFF5F5F5)
 
     Box(
         contentAlignment = Alignment.Center,
         modifier = modifier
             .graphicsLayer {
-                scaleX = scale
-                scaleY = scale
+                scaleX = squishX
+                scaleY = squishY
             }
             .drawBehind {
+                // Ground Shadow
                 if (isDark) {
-                    val glowAlpha = if (isPressed) 0.15f else 0.45f
+                    val glowAlpha = if (isPressed) 0.04f else 0.08f
+                    // Deep metallic ground shadow
+                    drawCircle(
+                        brush = Brush.radialGradient(
+                            colors = listOf(Color.Black.copy(alpha = 0.6f), Color.Transparent),
+                            center = center + Offset(0f, 10.dp.toPx()),
+                            radius = size.maxDimension * 0.8f,
+                        ),
+                        radius = size.maxDimension * 0.8f,
+                        center = center + Offset(0f, 10.dp.toPx())
+                    )
+                    // Theme glow
                     drawCircle(
                         brush = Brush.radialGradient(
                             colors = listOf(themeColor.copy(alpha = glowAlpha), Color.Transparent),
                             center = center,
-                            radius = size.maxDimension * 0.9f,
+                            radius = size.maxDimension * 0.65f,
                         ),
-                        radius = size.maxDimension * 0.9f,
+                        radius = size.maxDimension * 0.65f,
                         center = center
                     )
                 } else {
+                    // Elevated shadow for Light Mode
                     drawCircle(
                         brush = Brush.radialGradient(
                             colors = listOf(Color.Black.copy(alpha = 0.25f), Color.Transparent),
-                            center = center + Offset(0f, 4.dp.toPx()),
-                            radius = size.maxDimension * 0.7f
-                        ),
-                        radius = size.maxDimension * 0.7f,
-                        center = center + Offset(0f, 4.dp.toPx())
-                    )
-                    drawCircle(
-                        brush = Brush.radialGradient(
-                            colors = listOf(Color.Black.copy(alpha = 0.1f), Color.Transparent),
                             center = center + Offset(0f, 8.dp.toPx()),
-                            radius = size.maxDimension * 0.9f
+                            radius = size.maxDimension * 0.75f,
                         ),
-                        radius = size.maxDimension * 0.9f,
+                        radius = size.maxDimension * 0.75f,
                         center = center + Offset(0f, 8.dp.toPx())
                     )
                 }
 
-                val rimAlpha = if (isDark) 0.3f else 0.15f
-                val rimColor = if (isDark) Color.White.copy(alpha = rimAlpha) else Color.Black.copy(alpha = rimAlpha)
+                // Main 3D Sphere Body - Metallic Refinement
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = if (isDark) {
+                            // Deeper Metallic Palette
+                            listOf(Color(0xFF2A2A2A), Color(0xFF080808), Color(0xFF000000))
+                        } else {
+                            listOf(Color.White, Color(0xFFE0E0E0))
+                        },
+                        center = center - Offset(size.width * 0.15f, size.height * 0.15f),
+                        radius = size.maxDimension * 0.8f
+                    ),
+                    radius = size.maxDimension / 2,
+                    center = center
+                )
+
+                // Rim Light (Bottom Right)
+                if (isDark) {
+                    drawCircle(
+                        brush = Brush.radialGradient(
+                            colors = listOf(Color(0xFF444444).copy(alpha = 0.15f), Color.Transparent),
+                            center = center + Offset(size.width * 0.3f, size.height * 0.3f),
+                            radius = size.maxDimension * 0.4f
+                        ),
+                        radius = size.maxDimension / 2,
+                        center = center
+                    )
+                }
+
+                // Inner Glow / Lighting
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = if (isDark) {
+                            listOf(Color(0xFF222222).copy(alpha = 0.12f), Color.Transparent)
+                        } else {
+                            listOf(Color.White.copy(alpha = 0.5f), Color.Transparent)
+                        },
+                        center = center - Offset(size.width * 0.2f, size.height * 0.2f),
+                        radius = size.maxDimension * 0.6f
+                    ),
+                    radius = size.maxDimension / 2,
+                    center = center
+                )
+                
+                // Sharp Specular Highlight - Muted for Dark Metal
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = if (isDark) {
+                            listOf(Color(0xFF666666).copy(alpha = 0.2f), Color.Transparent)
+                        } else {
+                            listOf(Color.White.copy(alpha = 0.45f), Color.Transparent)
+                        },
+                        center = center - Offset(size.width * 0.25f, size.height * 0.25f),
+                        radius = size.maxDimension * 0.12f
+                    ),
+                    radius = size.maxDimension * 0.12f,
+                    center = center - Offset(size.width * 0.25f, size.height * 0.25f)
+                )
+
+                val rimAlpha = if (isDark) 0.25f else 0.15f
+                val rimColor = if (isDark) Color(0xFF333333).copy(alpha = rimAlpha) else Color.Black.copy(alpha = rimAlpha)
                 drawCircle(
                     color = rimColor,
                     radius = (size.maxDimension / 2) - 0.5.dp.toPx(),
@@ -101,15 +178,6 @@ fun ThreeDPlayButton(
                 )
             }
             .clip(CircleShape)
-            .background(
-                brush = Brush.verticalGradient(
-                    colors = if (isPressed) {
-                        listOf(surfaceColor.copy(alpha = 0.85f), surfaceColor)
-                    } else {
-                        listOf(surfaceColor, surfaceColor.copy(alpha = 0.75f))
-                    }
-                )
-            )
             .clickable(
                 interactionSource = interactionSource,
                 indication = null,
@@ -120,7 +188,12 @@ fun ThreeDPlayButton(
             imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
             contentDescription = null,
             tint = themeColor,
-            modifier = Modifier.size(44.dp)
+            modifier = Modifier
+                .size(44.dp)
+                .graphicsLayer {
+                    scaleX = iconScale
+                    scaleY = iconScale
+                }
         )
     }
 }
@@ -157,6 +230,8 @@ fun ModernFluidBar(
                             onSeekStarted()
                             val newProgress = (change.position.x / size.width).coerceIn(0f, 1f)
                             onSeek(newProgress)
+                            // CRITICAL: Consume the event to prevent parent Pager or ModalSheet from swiping/minimizing
+                            change.consume()
                         }
                         if (event.changes.all { !it.pressed }) {
                             isTouching = false
@@ -171,14 +246,14 @@ fun ModernFluidBar(
             val width = size.width
             val height = size.height
 
-            val glowAlpha = if (isDark) 0.12f else 0.05f
+            val glowAlpha = if (isDark) 0.05f else 0.03f
             drawCircle(
                 brush = Brush.radialGradient(
                     colors = listOf(themeColor.copy(alpha = glowAlpha), Color.Transparent),
                     center = center,
-                    radius = width / 1.6f
+                    radius = width / 2.2f
                 ),
-                radius = width / 1.6f,
+                radius = width / 2.2f,
                 center = center
             )
 
@@ -202,11 +277,11 @@ fun ModernFluidBar(
 
             drawCircle(
                 brush = Brush.radialGradient(
-                    colors = listOf(themeColor.copy(alpha = if (isDark) 0.35f else 0.15f), Color.Transparent),
+                    colors = listOf(themeColor.copy(alpha = if (isDark) 0.15f else 0.1f), Color.Transparent),
                     center = Offset(indicatorX, height / 2),
-                    radius = 16.dp.toPx() * interactionScale
+                    radius = 12.dp.toPx() * interactionScale
                 ),
-                radius = 16.dp.toPx() * interactionScale,
+                radius = 12.dp.toPx() * interactionScale,
                 center = Offset(indicatorX, height / 2)
             )
 
@@ -235,88 +310,233 @@ fun MiniPlayer(
     trackArtist: String,
     artworkUri: String?,
     isPlaying: Boolean,
+    progress: Float,
+    visualizerData: List<Float>, // NEW: Visualizer data
     onTogglePlay: () -> Unit,
+    onForward: () -> Unit,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val themeColor = MaterialTheme.colorScheme.primary
     val isDark = MaterialTheme.colorScheme.background == Color.Black
 
-    Surface(
-        color = if (isDark) Color(0xFF1A1A1A) else Color(0xFFF9F9F9),
+    // BREATHTAKING MESH SURFACE
+    val surfaceBrush = if (isDark) {
+        Brush.verticalGradient(
+            colors = listOf(Color(0xFF222222), Color(0xFF080808))
+        )
+    } else {
+        Brush.verticalGradient(
+            colors = listOf(Color(0xFFFFFFFF), Color(0xFFF2F2F2))
+        )
+    }
+
+    Box(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp)
-            .height(72.dp)
-            .graphicsLayer {
-                shadowElevation = 12.dp.toPx()
-                shape = RoundedCornerShape(24.dp)
-                clip = true
-                if (isDark) {
-                    spotShadowColor = Color.White.copy(alpha = 0.25f)
-                    ambientShadowColor = Color.White.copy(alpha = 0.15f)
-                }
-            }
-            .drawBehind {
-                val rimColor = if (isDark) Color.White.copy(alpha = 0.15f) else Color.Black.copy(alpha = 0.08f)
-                drawRoundRect(
-                    color = rimColor,
-                    style = Stroke(width = 1.2.dp.toPx()),
-                    cornerRadius = CornerRadius(24.dp.toPx())
-                )
-            }
-            .clickable(onClick = onClick),
-        shape = RoundedCornerShape(24.dp),
-        tonalElevation = 8.dp
+            .padding(horizontal = 12.dp, vertical = 8.dp)
+            .height(76.dp)
     ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(horizontal = 16.dp)
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(48.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f)),
-                contentAlignment = Alignment.Center
-            ) {
-                if (artworkUri != null) {
-                    AsyncImage(
-                        model = artworkUri,
-                        contentDescription = null,
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Crop
+        Surface(
+            modifier = Modifier
+                .fillMaxSize()
+                .shadow(
+                    elevation = 28.dp,
+                    shape = RoundedCornerShape(28.dp),
+                    spotColor = if (isDark) Color.White.copy(alpha = 0.28f) else Color.Black.copy(alpha = 0.55f), // SLIGHTLY REDUCED BLACK SHADOW
+                    ambientColor = if (isDark) Color.Transparent else Color.Black.copy(alpha = 0.2f) // SLIGHTLY REDUCED AMBIENT
+                )
+                .graphicsLayer {
+                    shape = RoundedCornerShape(28.dp)
+                    clip = true
+                }
+                .drawBehind {
+                    // 3. SILKY GRAIN TEXTURE
+                    val grainAlpha = if (isDark) 0.12f else 0.06f
+                    val grainColor = if (isDark) Color.White else Color.Black
+                    val step = 3.dp.toPx()
+                    for (x in 0..size.width.toInt() step step.toInt()) {
+                        for (y in 0..size.height.toInt() step step.toInt()) {
+                            if ((x * 19 + y * 23) % 9 == 0) {
+                                drawCircle(
+                                    color = grainColor.copy(alpha = grainAlpha),
+                                    radius = 0.6.dp.toPx(),
+                                    center = Offset(x.toFloat(), y.toFloat())
+                                )
+                            }
+                        }
+                    }
+
+                    // 4. COMPLEX METALLIC RIM (Diamond Cut)
+                    val outerRimColor = if (isDark) Color.White.copy(alpha = 0.3f) else Color.Black.copy(alpha = 0.15f)
+                    val innerRimColor = if (isDark) Color.White.copy(alpha = 0.1f) else Color.White.copy(alpha = 0.6f)
+                    
+                    // Outer bright edge
+                    drawRoundRect(
+                        color = outerRimColor,
+                        style = Stroke(width = 1.5.dp.toPx()),
+                        cornerRadius = CornerRadius(28.dp.toPx())
                     )
-                } else {
-                    Icon(
-                        imageVector = Icons.Default.MusicNote,
-                        contentDescription = null,
-                        tint = themeColor.copy(alpha = 0.5f)
+                    // Inner soft highlight
+                    drawRoundRect(
+                        color = innerRimColor,
+                        topLeft = Offset(1.5.dp.toPx(), 1.5.dp.toPx()),
+                        size = Size(size.width - 3.dp.toPx(), size.height - 3.dp.toPx()),
+                        style = Stroke(width = 0.8.dp.toPx()),
+                        cornerRadius = CornerRadius(26.5.dp.toPx())
                     )
                 }
-            }
-            Spacer(modifier = Modifier.width(12.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = trackTitle,
-                    style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    maxLines = 1
+                .background(surfaceBrush)
+                .clickable(onClick = onClick),
+            color = Color.Transparent
+        ) {
+            Box(modifier = Modifier.fillMaxSize()) {
+                // SMART PROGRESS BAR (Top-aligned thin line)
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(progress)
+                        .height(2.5.dp)
+                        .background(
+                            brush = Brush.horizontalGradient(
+                                listOf(themeColor.copy(alpha = 0.6f), Color.White)
+                            )
+                        )
                 )
-                Text(
-                    text = trackArtist,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1
-                )
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp)
+                ) {
+                    // ELEVATED ARTWORK
+                    Box(
+                        modifier = Modifier
+                            .size(52.dp)
+                            .graphicsLayer {
+                                shadowElevation = 8.dp.toPx()
+                                shape = RoundedCornerShape(14.dp)
+                                clip = true
+                            }
+                            .background(MaterialTheme.colorScheme.surfaceVariant)
+                    ) {
+                        if (artworkUri != null) {
+                            AsyncImage(
+                                model = artworkUri,
+                                contentDescription = null,
+                                modifier = Modifier.fillMaxSize(),
+                                contentScale = ContentScale.Crop
+                            )
+                        } else {
+                            Icon(
+                                imageVector = Icons.Default.MusicNote,
+                                contentDescription = null,
+                                tint = themeColor.copy(alpha = 0.6f),
+                                modifier = Modifier.size(28.dp).align(Alignment.Center)
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.width(16.dp))
+
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = trackTitle,
+                            style = MaterialTheme.typography.bodyLarge.copy(
+                                fontWeight = FontWeight.Black,
+                                letterSpacing = 0.2.sp
+                            ),
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1
+                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = trackArtist.uppercase(),
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 1.sp
+                                ),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                                maxLines = 1,
+                                modifier = Modifier.weight(1f, fill = false)
+                            )
+                            if (isPlaying) {
+                                Spacer(modifier = Modifier.width(20.dp))
+                                MiniLEDVisualizer(
+                                    data = visualizerData,
+                                    color = themeColor,
+                                    modifier = Modifier.width(56.dp).height(12.dp) // INCREASED WIDTH
+                                )
+                            }
+                        }
+                    }
+
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        // CUSTOM MINIMALIST CONTROLS
+                        Surface(
+                            onClick = onTogglePlay,
+                            shape = CircleShape,
+                            color = themeColor.copy(alpha = 0.1f),
+                            modifier = Modifier.size(44.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(30.dp),
+                                    tint = themeColor
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.width(8.dp))
+
+                        // SMART FORWARD BUTTON
+                        IconButton(
+                            onClick = onForward,
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.SkipNext,
+                                contentDescription = "Forward",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+                    }
+                }
             }
-            IconButton(onClick = onTogglePlay) {
-                Icon(
-                    if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                    contentDescription = if (isPlaying) "Pause" else "Play",
-                    modifier = Modifier.size(36.dp),
-                    tint = themeColor
+        }
+    }
+}
+
+@Composable
+fun MiniLEDVisualizer(
+    data: List<Float>,
+    color: Color,
+    modifier: Modifier = Modifier
+) {
+    val barCount = 12 // INCREASED FROM 8
+    val displayData = if (data.size >= barCount) data.take(barCount) else List(barCount) { 0.1f }
+
+    Canvas(modifier = modifier) {
+        val spacing = 2.dp.toPx()
+        val barWidth = (size.width - (spacing * (barCount - 1))) / barCount
+        val segmentCount = 4
+        val segmentHeight = size.height / segmentCount
+        val segmentSpacing = 1.dp.toPx()
+
+        displayData.forEachIndexed { index, value ->
+            val x = index * (barWidth + spacing)
+            val activeSegments = (value * segmentCount).roundToInt().coerceIn(1, segmentCount)
+
+            for (i in 0 until segmentCount) {
+                val y = size.height - (i + 1) * segmentHeight
+                val isActive = i < activeSegments
+                
+                drawRoundRect(
+                    color = if (isActive) color else color.copy(alpha = 0.1f),
+                    topLeft = Offset(x, y + segmentSpacing / 2),
+                    size = Size(barWidth, segmentHeight - segmentSpacing),
+                    cornerRadius = CornerRadius(1.dp.toPx())
                 )
             }
         }
@@ -523,38 +743,42 @@ fun DynamicEqualizer(
 ) {
     val themeColor = MaterialTheme.colorScheme.primary
     
-    val animatedData = data.map { 
-        animateFloatAsState(
-            targetValue = it,
-            animationSpec = spring(stiffness = Spring.StiffnessLow, dampingRatio = Spring.DampingRatioNoBouncy),
-            label = "BarHeight"
-        ).value
-    }
+    // HIGH-PERFORMANCE ANIMATION: Use a single transition instead of 20 separate ones
+    val infiniteTransition = rememberInfiniteTransition(label = "WaveProp")
+    val waveOffset by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = TWO_PI,
+        animationSpec = infiniteRepeatable(
+            animation = tween(2000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "WaveOffset"
+    )
 
     Box(
-        modifier = modifier
-            .fillMaxWidth(),
+        modifier = modifier.fillMaxWidth(),
         contentAlignment = Alignment.Center
     ) {
         Canvas(modifier = Modifier.fillMaxSize()) {
-            val barCount = animatedData.size
+            val barCount = data.size
             val spacing = 6.dp.toPx()
             val totalSpacing = spacing * (barCount - 1)
             val barWidth = (size.width - totalSpacing) / barCount
             
-            animatedData.forEachIndexed { index, value ->
+            data.forEachIndexed { index, value ->
                 val x = index * (barWidth + spacing)
-                // SCALE: make bars more visible even at low values
-                val scaledValue = (value * 1.2f).coerceIn(0.1f, 1f)
-                val barHeight = size.height * scaledValue
+                
+                // Add a subtle wave-like movement even when idle for a premium feel
+                val dynamicImpact = (value * 1.1f + sin(waveOffset + index * 0.5f) * 0.05f).coerceIn(0.1f, 1f)
+                val barHeight = size.height * dynamicImpact
                 val y = size.height - barHeight
 
                 drawRoundRect(
                     brush = Brush.verticalGradient(
                         colors = listOf(themeColor.copy(alpha = 0.35f), Color.Transparent)
                     ),
-                    topLeft = Offset(x, y - 10.dp.toPx()),
-                    size = Size(barWidth, barHeight + 10.dp.toPx()),
+                    topLeft = Offset(x, y - 8.dp.toPx()),
+                    size = Size(barWidth, barHeight + 8.dp.toPx()),
                     cornerRadius = CornerRadius(barWidth / 2)
                 )
 
@@ -568,10 +792,10 @@ fun DynamicEqualizer(
                 )
 
                 drawRoundRect(
-                    color = Color.White.copy(alpha = 0.4f),
-                    topLeft = Offset(x + 1.5.dp.toPx(), y + 1.5.dp.toPx()),
-                    size = Size(barWidth - 3.dp.toPx(), 3.dp.toPx()),
-                    cornerRadius = CornerRadius(1.5.dp.toPx())
+                    color = Color.White.copy(alpha = 0.3f),
+                    topLeft = Offset(x + 1.2.dp.toPx(), y + 1.2.dp.toPx()),
+                    size = Size(barWidth - 2.4.dp.toPx(), 2.5.dp.toPx()),
+                    cornerRadius = CornerRadius(1.2.dp.toPx())
                 )
             }
         }
@@ -596,7 +820,7 @@ fun MasterVolumeBar(
     Column(modifier = modifier.fillMaxWidth()) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(bottom = 8.dp)
+            modifier = Modifier.padding(bottom = 4.dp)
         ) {
             Icon(
                 imageVector = when {
@@ -606,12 +830,12 @@ fun MasterVolumeBar(
                 },
                 contentDescription = null,
                 tint = themeColor,
-                modifier = Modifier.size(20.dp)
+                modifier = Modifier.size(16.dp)
             )
-            Spacer(modifier = Modifier.width(12.dp))
+            Spacer(modifier = Modifier.width(8.dp))
             Text(
                 "MASTER VOLUME",
-                style = MaterialTheme.typography.labelMedium,
+                style = MaterialTheme.typography.labelSmall,
                 fontWeight = FontWeight.Black,
                 letterSpacing = 1.sp,
                 color = MaterialTheme.colorScheme.onSurface
@@ -628,7 +852,7 @@ fun MasterVolumeBar(
         BoxWithConstraints(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(48.dp)
+                .height(32.dp)
                 .pointerInput(Unit) {
                     awaitPointerEventScope {
                         while (true) {
@@ -638,6 +862,8 @@ fun MasterVolumeBar(
                                 isTouching = true
                                 val newValue = (change.position.x / size.width).coerceIn(0f, 1f)
                                 onValueChange(newValue)
+                                // CRITICAL: Consume the event to prevent parent Pager from swiping
+                                change.consume()
                             }
                             if (event.changes.all { !it.pressed }) {
                                 isTouching = false
@@ -676,8 +902,8 @@ fun MasterVolumeBar(
             Box(
                 modifier = Modifier
                     .align(Alignment.CenterStart)
-                    .offset(x = (constraintsWidth - 24.dp) * value)
-                    .size(24.dp)
+                    .offset(x = (constraintsWidth - 20.dp) * value)
+                    .size(20.dp)
                     .graphicsLayer {
                         scaleX = interactionScale
                         scaleY = interactionScale
@@ -707,7 +933,7 @@ fun EqualizerSlider(
 ) {
     val themeColor = MaterialTheme.colorScheme.primary
     var isDragging by remember { mutableStateOf(false) }
-    val sliderHeight = 160.dp
+    val sliderHeight = 145.dp
 
     val interactionScale by animateFloatAsState(
         targetValue = if (isDragging) 1.25f else 1f,
@@ -717,12 +943,12 @@ fun EqualizerSlider(
 
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = modifier.width(54.dp)
+        modifier = modifier.width(50.dp)
     ) {
         Box(
             modifier = Modifier
-                .height(sliderHeight + 24.dp) // Added vertical padding
-                .width(54.dp) // Wide touch area
+                .height(sliderHeight + 8.dp) // Minimal vertical padding
+                .width(50.dp) // Wide touch area
                 .pointerInput(Unit) {
                     awaitPointerEventScope {
                         while (true) {
@@ -730,10 +956,12 @@ fun EqualizerSlider(
                             val change = event.changes.first()
                             if (change.pressed) {
                                 isDragging = true
-                                // Accounting for 12dp vertical padding on each side
-                                val relativeY = (change.position.y - 12.dp.toPx()).coerceIn(0f, sliderHeight.toPx())
+                                // Accounting for 4dp vertical padding on each side
+                                val relativeY = (change.position.y - 4.dp.toPx()).coerceIn(0f, sliderHeight.toPx())
                                 val newValue = 1f - (relativeY / sliderHeight.toPx())
                                 onValueChange(newValue)
+                                // CRITICAL: Consume the event to prevent parent Pager from swiping
+                                change.consume()
                             }
                             if (event.changes.all { !it.pressed }) {
                                 isDragging = false
@@ -747,21 +975,21 @@ fun EqualizerSlider(
             Box(
                 modifier = Modifier
                     .height(sliderHeight)
-                    .width(4.dp)
+                    .width(3.dp)
                     .clip(CircleShape)
                     .background(themeColor.copy(alpha = 0.15f))
             )
 
             // Thumb Container
             Box(
-                modifier = Modifier.height(sliderHeight).width(32.dp),
+                modifier = Modifier.height(sliderHeight).width(28.dp),
                 contentAlignment = Alignment.BottomCenter
             ) {
                  // Thumb
                  Box(
                     modifier = Modifier
-                        .offset(y = (-sliderHeight * value))
-                        .size(26.dp)
+                        .offset(y = (-(sliderHeight - 22.dp) * value))
+                        .size(22.dp)
                         .graphicsLayer {
                             scaleX = interactionScale
                             scaleY = interactionScale
@@ -793,7 +1021,7 @@ fun EqualizerSlider(
             }
         }
         
-        Spacer(modifier = Modifier.height(10.dp))
+        Spacer(modifier = Modifier.height(2.dp)) // Shrunk from 4dp
         
         Text(
             text = label,
@@ -813,35 +1041,48 @@ fun SleekSearchBar(
     placeholder: String = "Search..."
 ) {
     val isDark = MaterialTheme.colorScheme.background == Color.Black
-    
+    val surfaceColor = if (isDark) Color(0xFF0F0F0F) else Color(0xFFF7F7F7)
+    val themeColor = MaterialTheme.colorScheme.primary
+
     Surface(
-        color = MaterialTheme.colorScheme.surfaceVariant,
-        shape = RoundedCornerShape(16.dp),
+        color = surfaceColor,
+        shape = RoundedCornerShape(18.dp),
         modifier = modifier
             .fillMaxWidth()
             .height(56.dp)
             .graphicsLayer {
+                shape = RoundedCornerShape(18.dp)
+                clip = true
                 if (isDark) {
-                    shadowElevation = 8.dp.toPx()
-                    spotShadowColor = Color.White.copy(alpha = 0.15f)
-                    ambientShadowColor = Color.White.copy(alpha = 0.1f)
+                    shadowElevation = 4.dp.toPx()
+                    spotShadowColor = Color.White.copy(alpha = 0.08f)
+                } else {
+                    shadowElevation = 6.dp.toPx()
+                    spotShadowColor = Color.Black.copy(alpha = 0.05f)
                 }
             }
             .drawBehind {
-                if (isDark) {
-                    drawRoundRect(
-                        color = Color.White.copy(alpha = 0.15f),
-                        style = Stroke(width = 1.dp.toPx()),
-                        cornerRadius = CornerRadius(16.dp.toPx())
-                    )
-                }
+                // SOFT RADIANT TINT
+                val tintAlpha = if (isDark) 0.1f else 0.05f
+                drawRoundRect(
+                    color = themeColor.copy(alpha = tintAlpha),
+                    cornerRadius = CornerRadius(18.dp.toPx())
+                )
+
+                val rimAlpha = if (isDark) 0.12f else 0.06f
+                val rimColor = if (isDark) Color.White else Color.Black
+                drawRoundRect(
+                    color = rimColor.copy(alpha = rimAlpha),
+                    style = Stroke(width = 1.dp.toPx()),
+                    cornerRadius = CornerRadius(18.dp.toPx())
+                )
             }
     ) {
         TextField(
             value = query,
             onValueChange = onQueryChange,
-            placeholder = { Text(placeholder, color = MaterialTheme.colorScheme.onSurfaceVariant) },
-            leadingIcon = { Icon(Icons.Default.Search, null, tint = MaterialTheme.colorScheme.primary) },
+            placeholder = { Text(placeholder, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)) },
+            leadingIcon = { Icon(Icons.Default.Search, null, tint = themeColor.copy(alpha = 0.7f)) },
             trailingIcon = {
                 if (query.isNotEmpty()) {
                     IconButton(onClick = { onQueryChange("") }) {
@@ -857,7 +1098,7 @@ fun SleekSearchBar(
                 unfocusedIndicatorColor = Color.Transparent,
                 focusedTextColor = MaterialTheme.colorScheme.onSurface,
                 unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
-                cursorColor = MaterialTheme.colorScheme.primary
+                cursorColor = themeColor
             ),
             singleLine = true,
             modifier = Modifier.fillMaxSize()

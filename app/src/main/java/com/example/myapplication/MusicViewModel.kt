@@ -22,7 +22,9 @@ import com.example.myapplication.audio.MusicService
 import com.example.myapplication.data.MediaScanner
 import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.MoreExecutors
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -31,6 +33,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
 
@@ -79,23 +82,34 @@ data class UiState(
     val sortOrder: SortOrder = SortOrder.LAST_ADDED,
     val searchQuery: String = "",
     val selectedPlaylistId: String? = null,
-    // --- AUDIO ENGINE STATE ---
+    val playingPlaylistId: String? = null,
+    val is16DEnabled: Boolean = false, // 16D State
+    // --- TITAN AUDIO ENGINE STATE ---
     val masterVolume: Float = 1.0f,
+    val clarityLevel: Float = 0.5f,
+    val snappiness: Float = 0.5f,
+    val soundstageWidth: Float = 1.0f,
+    val tempo: Float = 1.0f,
     // --- EQUALIZER & VISUALIZER STATE ---
     val eqBands: List<Float> = listOf(0.5f, 0.5f, 0.5f, 0.5f, 0.5f),
     val selectedPreset: String = "Flat",
+    val userName: String = "User",
+    val isOnboardingRequired: Boolean = true,
     val eqPresets: List<EqPreset> = listOf(
         EqPreset("Flat", listOf(0.5f, 0.5f, 0.5f, 0.5f, 0.5f)),
-        EqPreset("Bass Boost", listOf(0.9f, 0.8f, 0.5f, 0.3f, 0.2f)),
-        EqPreset("Vocals", listOf(0.2f, 0.4f, 0.9f, 0.8f, 0.5f)),
-        EqPreset("High Hat", listOf(0.1f, 0.2f, 0.3f, 0.7f, 0.9f)),
-        EqPreset("Cinema", listOf(0.8f, 0.6f, 0.4f, 0.6f, 0.8f))
+        EqPreset("Bass Boost", listOf(0.95f, 0.7f, 0.5f, 0.4f, 0.3f)), // Aggressive Lows
+        EqPreset("Studio Crystal", listOf(0.45f, 0.5f, 0.6f, 0.85f, 0.95f)), // High clarity
+        EqPreset("Vocals", listOf(0.2f, 0.45f, 0.9f, 0.7f, 0.4f)),
+        EqPreset("Cinema", listOf(0.85f, 0.6f, 0.4f, 0.6f, 0.9f))
     ),
     val visualizerData: List<Float> = List(20) { 0.1f }
 )
 
 class MusicViewModel(application: Application) : AndroidViewModel(application) {
-    private val _uiState = MutableStateFlow(UiState())
+    private val _uiState = MutableStateFlow(UiState(
+        userName = PreferenceManager.getUserName(application),
+        isOnboardingRequired = PreferenceManager.isFirstLaunch(application)
+    ))
     val uiState: StateFlow<UiState> = _uiState.asStateFlow()
 
     private var progressJob: Job? = null
@@ -113,18 +127,20 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     private val trackOverrides = mutableMapOf<Long, Pair<String?, String?>>()
 
     init {
+        // PRIORITY 1: Setup controller immediately
         setupMediaController(application)
+        // PRIORITY 2: Load data on a high-priority background thread
         loadData()
     }
 
     private fun loadData() {
-        viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true) }
-            
+        viewModelScope.launch(Dispatchers.IO) {
             val rawTracks = mediaScanner.scanAudioFiles()
             
-            // 1. Load Overrides from DataStore
-            val overridesStr = app.dataStore.data.map { it[OVERRIDES_KEY] ?: "" }.first()
+            val overridesDeferred = async { app.dataStore.data.map { it[OVERRIDES_KEY] ?: "" }.first() }
+            val playlistsDeferred = async { app.dataStore.data.map { it[PLAYLISTS_KEY] ?: "" }.first() }
+            
+            val overridesStr = overridesDeferred.await()
             val overrideMap = parseOverrides(overridesStr)
             trackOverrides.clear()
             trackOverrides.putAll(overrideMap)
@@ -138,26 +154,16 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                 } ?: track
             }
 
-            // 2. Load Playlists from DataStore
-            val playlistsStr = app.dataStore.data.map { it[PLAYLISTS_KEY] ?: "" }.first()
-            val playlists = if (playlistsStr.isEmpty()) {
-                listOf(
-                    Playlist("pl_happy", "Happy", isDefault = true),
-                    Playlist("pl_sad", "Sad", isDefault = true),
-                    Playlist("pl_relaxed", "Relaxed", isDefault = true)
-                )
-            } else {
-                parsePlaylists(playlistsStr, finalizedTracks)
-            }
+            val playlistsStr = playlistsDeferred.await()
+            val playlists = parsePlaylists(playlistsStr, finalizedTracks)
 
-            _uiState.update { state ->
-                val sorted = sortTracks(finalizedTracks, state.sortOrder)
-                state.copy(
-                    playlist = sorted,
-                    filteredPlaylist = filterTracks(sorted, state.searchQuery),
+            withContext(Dispatchers.Main.immediate) {
+                _uiState.update { it.copy(
+                    playlist = finalizedTracks,
+                    filteredPlaylist = finalizedTracks,
                     playlists = playlists,
                     isLoading = false
-                )
+                ) }
             }
         }
     }
@@ -252,7 +258,13 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                 override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                     val currentUri = mediaItem?.mediaId
                     val track = _uiState.value.playlist.find { it.data == currentUri }
-                    _uiState.update { it.copy(currentTrack = track) }
+                    
+                    val newDirection = if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO) 1 else _uiState.value.skipDirection
+                    
+                    _uiState.update { it.copy(
+                        currentTrack = track,
+                        skipDirection = newDirection
+                    ) }
                 }
                 override fun onShuffleModeEnabledChanged(shuffleModeEnabled: Boolean) {
                     _uiState.update { it.copy(shuffleModeEnabled = shuffleModeEnabled) }
@@ -267,6 +279,9 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                 repeatMode = mediaController.repeatMode
             ) }
             if (mediaController.isPlaying) startProgressPolling()
+            
+            // CRITICAL: Sync all audio engine state from UI to service on connect
+            syncAllAudioStateToService()
         }, MoreExecutors.directExecutor())
     }
 
@@ -310,23 +325,44 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         _uiState.update { it.copy(selectedPlaylistId = playlistId) }
     }
 
-    fun setTrack(track: Track) {
+    fun playPlaylist(tracks: List<Track>, startIndex: Int, playlistId: String? = null) {
         val player = controller ?: return
-        val metadata = MediaMetadata.Builder()
-            .setTitle(track.title)
-            .setArtist(track.artist)
-            .setArtworkUri(track.customArtworkUri?.let { Uri.parse(it) })
-            .build()
-        val mediaItem = MediaItem.Builder()
-            .setUri(track.data)
-            .setMediaId(track.data)
-            .setMediaMetadata(metadata)
-            .build()
-        player.setMediaItem(mediaItem)
+        
+        val mediaItems = tracks.map { track ->
+            val metadata = MediaMetadata.Builder()
+                .setTitle(track.title)
+                .setArtist(track.artist)
+                .setArtworkUri(track.customArtworkUri?.let { Uri.parse(it) })
+                .build()
+            MediaItem.Builder()
+                .setUri(track.data)
+                .setMediaId(track.data)
+                .setMediaMetadata(metadata)
+                .build()
+        }
+        
+        player.setMediaItems(mediaItems, startIndex, 0)
         player.prepare()
         player.play()
-        _uiState.update { it.copy(currentTrack = track, isPlaying = true, skipDirection = 1) }
+        
+        _uiState.update { it.copy(
+            currentTrack = tracks[startIndex], 
+            isPlaying = true, 
+            skipDirection = 1,
+            playingPlaylistId = playlistId
+        ) }
         startProgressPolling()
+    }
+
+    fun setTrack(track: Track) {
+        // Fallback for single track play, using the global list as context
+        val index = _uiState.value.playlist.indexOf(track)
+        if (index != -1) {
+            playPlaylist(_uiState.value.playlist, index, "all_tracks")
+        } else {
+            // If track not in list, just play it alone
+            playPlaylist(listOf(track), 0, null)
+        }
     }
 
     fun togglePlayPause() {
@@ -335,20 +371,18 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun skipNext() {
-        val current = _uiState.value.currentTrack ?: return
-        val index = _uiState.value.playlist.indexOf(current)
-        if (index != -1 && index < _uiState.value.playlist.size - 1) {
-            _uiState.update { it.copy(skipDirection = 1) }
-            setTrack(_uiState.value.playlist[index + 1])
+        val player = controller ?: return
+        _uiState.update { it.copy(skipDirection = 1) }
+        if (player.hasNextMediaItem()) {
+            player.seekToNext()
         }
     }
 
     fun skipPrevious() {
-        val current = _uiState.value.currentTrack ?: return
-        val index = _uiState.value.playlist.indexOf(current)
-        if (index > 0) {
-            _uiState.update { it.copy(skipDirection = -1) }
-            setTrack(_uiState.value.playlist[index - 1])
+        val player = controller ?: return
+        _uiState.update { it.copy(skipDirection = -1) }
+        if (player.hasPreviousMediaItem()) {
+            player.seekToPrevious()
         }
     }
 
@@ -385,18 +419,43 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         player.shuffleModeEnabled = !player.shuffleModeEnabled
     }
 
+    fun toggle16D() {
+        val newState = !_uiState.value.is16DEnabled
+        _uiState.update { it.copy(is16DEnabled = newState) }
+        
+        val args = Bundle().apply { putBoolean("enabled", newState) }
+        controller?.sendCustomCommand(SessionCommand("TOGGLE_16D", Bundle.EMPTY), args)
+    }
+
+    private var isUiVisible = true
+
+    fun setUiVisible(visible: Boolean) {
+        isUiVisible = visible
+        if (visible && controller?.isPlaying == true) {
+            startProgressPolling()
+        }
+    }
+
     private fun startProgressPolling() {
         progressJob?.cancel()
         progressJob = viewModelScope.launch {
             var tick = 0f
             while (true) {
                 val player = controller
+                
+                if (!isUiVisible) {
+                    // Battery saving: slow down updates significantly when UI is not visible
+                    delay(500)
+                    if (player == null || !player.isPlaying) break
+                    continue
+                }
+
                 if (player != null && player.isPlaying) {
                     val pos = player.currentPosition
                     val dur = player.duration.coerceAtLeast(1)
                     
-                    // Generate fluid visualizer data
-                    tick += 0.25f
+                    // Generate fluid visualizer data at high frequency
+                    tick += 0.04f // Adjusted for 8ms polling (was 0.25 for 50ms)
                     val bands = _uiState.value.eqBands
                     val newData = List(20) { i ->
                         val eqImpact = bands[i % bands.size]
@@ -409,14 +468,17 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                         duration = dur,
                         visualizerData = newData
                     ) }
+                    delay(8) // Support 120Hz refresh rate
                 } else {
                     if (_uiState.value.visualizerData.any { it > 0.11f }) {
                         _uiState.update { state ->
                             state.copy(visualizerData = state.visualizerData.map { (it * 0.85f).coerceAtLeast(0.1f) })
                         }
+                        delay(16) // Smooth decay for visualizer bars
+                    } else {
+                        delay(250) // Idle polling
                     }
                 }
-                delay(50)
             }
         }
     }
@@ -452,14 +514,83 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         _uiState.update { it.copy(masterVolume = value) }
     }
 
+    fun updateTitanParams(
+        clarity: Float = _uiState.value.clarityLevel,
+        snappiness: Float = _uiState.value.snappiness,
+        soundstage: Float = _uiState.value.soundstageWidth
+    ) {
+        _uiState.update { it.copy(
+            clarityLevel = clarity,
+            snappiness = snappiness,
+            soundstageWidth = soundstage
+        ) }
+        val args = Bundle().apply {
+            putFloat("clarity", clarity)
+            putFloat("snappiness", snappiness)
+            putFloat("soundstage", soundstage)
+        }
+        controller?.sendCustomCommand(SessionCommand("UPDATE_TITAN_PARAMS", Bundle.EMPTY), args)
+    }
+
+    fun setTempo(tempo: Float) {
+        _uiState.update { it.copy(tempo = tempo) }
+        val args = Bundle().apply { putFloat("tempo", tempo) }
+        controller?.sendCustomCommand(SessionCommand("UPDATE_TEMPO", Bundle.EMPTY), args)
+    }
+
+    fun updateUserName(name: String) {
+        PreferenceManager.setUserName(app, name)
+        _uiState.update { it.copy(userName = name) }
+    }
+
+    fun completeOnboarding() {
+        PreferenceManager.setFirstLaunchCompleted(app)
+        _uiState.update { it.copy(isOnboardingRequired = false) }
+    }
+
     private fun sendEqUpdateToService(index: Int, value: Float) {
         val mediaController = controller ?: return
-        val level = ((value - 0.5f) * 3000).toInt().toShort() // Convert 0..1 to -1500..1500 mB
+        // Map 0..1 to -24..24 dB, but send as scale factor * 100 for short transmission
+        val gainDb = (value - 0.5f) * 48.0f
+        val level = (gainDb * 100).toInt().toShort()
         val args = Bundle().apply {
             putInt("band_index", index)
             putShort("level", level)
         }
         mediaController.sendCustomCommand(SessionCommand("UPDATE_EQ", Bundle.EMPTY), args)
+    }
+
+    /**
+     * Pushes ALL current UI audio state to the MusicService.
+     * Called once when the MediaController first connects, ensuring the service
+     * engine parameters match the UI state from the very start.
+     */
+    private fun syncAllAudioStateToService() {
+        val state = _uiState.value
+        
+        // 1. Sync 16D toggle
+        val toggle16DArgs = Bundle().apply { putBoolean("enabled", state.is16DEnabled) }
+        controller?.sendCustomCommand(SessionCommand("TOGGLE_16D", Bundle.EMPTY), toggle16DArgs)
+        
+        // 2. Sync all EQ bands
+        state.eqBands.forEachIndexed { index, value ->
+            sendEqUpdateToService(index, value)
+        }
+        
+        // 3. Sync Titan params (clarity, snappiness, soundstage)
+        val titanArgs = Bundle().apply {
+            putFloat("clarity", state.clarityLevel)
+            putFloat("snappiness", state.snappiness)
+            putFloat("soundstage", state.soundstageWidth)
+        }
+        controller?.sendCustomCommand(SessionCommand("UPDATE_TITAN_PARAMS", Bundle.EMPTY), titanArgs)
+        
+        // 4. Sync tempo
+        val tempoArgs = Bundle().apply { putFloat("tempo", state.tempo) }
+        controller?.sendCustomCommand(SessionCommand("UPDATE_TEMPO", Bundle.EMPTY), tempoArgs)
+        
+        // 5. Sync master volume
+        controller?.volume = state.masterVolume
     }
 
     fun saveCustomPreset(name: String) {
@@ -652,6 +783,12 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
             }
             state.copy(playlists = updatedPlaylists)
         }
+        
+        // SYNC PLAYER QUEUE
+        if (playlistId == _uiState.value.playingPlaylistId) {
+            controller?.moveMediaItem(fromIndex, toIndex)
+        }
+        
         savePlaylists()
     }
 

@@ -1,6 +1,7 @@
 package com.example.myapplication
 
 import android.net.Uri
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
@@ -20,6 +21,7 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -32,6 +34,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -55,8 +59,6 @@ import kotlin.math.roundToInt
 @Composable
 fun LibraryScreen(
     viewModel: MusicViewModel,
-    isDarkTheme: Boolean,
-    onThemeToggle: () -> Unit,
     onMiniPlayerClick: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -64,6 +66,11 @@ fun LibraryScreen(
         uiState.playlists.find { it.id == uiState.selectedPlaylistId }
     }
     var showCreateDialog by remember { mutableStateOf(false) }
+
+    // Handle back button for playlist details
+    BackHandler(enabled = uiState.selectedPlaylistId != null) {
+        viewModel.setSelectedPlaylist(null)
+    }
 
     Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         Scaffold(
@@ -176,32 +183,49 @@ fun PlaylistLandingView(
     onCreateClick: () -> Unit,
     viewModel: MusicViewModel
 ) {
+    var searchQuery by remember { mutableStateOf("") }
+    
+    val filteredPlaylists = remember(playlists, searchQuery) {
+        if (searchQuery.isEmpty()) playlists
+        else playlists.filter { it.name.lowercase().contains(searchQuery.lowercase()) }
+    }
+
     Column(modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp)) {
         Text(
             "Your Collections",
-            style = MaterialTheme.typography.displayLarge.copy(fontSize = 28.sp),
+            style = MaterialTheme.typography.displayLarge.copy(fontSize = 32.sp),
             fontWeight = FontWeight.Black,
             color = MaterialTheme.colorScheme.onSurface
         )
         Text(
-            "Mood-based and custom playlists",
+            "Manage your mood-based and custom playlists",
             style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.9f)
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
         )
-        
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        // SLEEK SEARCH FOR PLAYLISTS
+        SleekSearchBar(
+            query = searchQuery,
+            onQueryChange = { searchQuery = it },
+            placeholder = "Find a collection...",
+            modifier = Modifier.fillMaxWidth()
+        )
+
         Spacer(modifier = Modifier.height(24.dp))
 
         LazyVerticalGrid(
             columns = GridCells.Fixed(2),
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-            contentPadding = PaddingValues(bottom = 180.dp)
+            horizontalArrangement = Arrangement.spacedBy(20.dp),
+            verticalArrangement = Arrangement.spacedBy(20.dp),
+            contentPadding = PaddingValues(bottom = 220.dp)
         ) {
             item {
                 CreatePlaylistCard(onClick = onCreateClick)
             }
 
-            items(playlists) { playlist ->
+            items(filteredPlaylists) { playlist ->
                 PlaylistCard(
                     playlist = playlist,
                     onClick = { onPlaylistClick(playlist) },
@@ -216,44 +240,66 @@ fun PlaylistLandingView(
 fun CreatePlaylistCard(onClick: () -> Unit) {
     val themeColor = MaterialTheme.colorScheme.primary
 
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (isPressed) 0.96f else 1f,
+        animationSpec = spring(stiffness = Spring.StiffnessLow),
+        label = "CreateCardScale"
+    )
+
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .aspectRatio(1f)
-            .clip(RoundedCornerShape(24.dp))
-            .background(themeColor.copy(alpha = 0.1f))
-            .clickable(onClick = onClick)
+            .aspectRatio(0.85f) // More modern rectangular profile
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            }
+            .clip(RoundedCornerShape(28.dp))
+            .background(themeColor.copy(alpha = 0.05f))
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = onClick
+            )
             .drawBehind {
                 drawRoundRect(
-                    color = themeColor.copy(alpha = 0.4f),
+                    color = themeColor.copy(alpha = 0.3f),
                     style = Stroke(
-                        width = 2.dp.toPx(),
-                        pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(10f, 10f))
+                        width = 1.5.dp.toPx(),
+                        pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(12f, 12f))
                     ),
-                    cornerRadius = CornerRadius(24.dp.toPx())
+                    cornerRadius = CornerRadius(28.dp.toPx())
                 )
             },
         contentAlignment = Alignment.Center
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Icon(
-                Icons.Default.Add,
-                null,
-                modifier = Modifier.size(48.dp),
-                tint = themeColor
-            )
-            Spacer(modifier = Modifier.height(8.dp))
+            Surface(
+                modifier = Modifier.size(56.dp),
+                shape = CircleShape,
+                color = themeColor.copy(alpha = 0.1f)
+            ) {
+                Icon(
+                    Icons.Default.Add,
+                    null,
+                    modifier = Modifier.padding(12.dp),
+                    tint = themeColor
+                )
+            }
+            Spacer(modifier = Modifier.height(16.dp))
             Text(
-                "Create New",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = themeColor
+                "NEW COLLECTION",
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Black,
+                color = themeColor,
+                letterSpacing = 1.sp
             )
         }
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun PlaylistCard(
     playlist: Playlist,
@@ -261,10 +307,18 @@ fun PlaylistCard(
     viewModel: MusicViewModel
 ) {
     val isDark = MaterialTheme.colorScheme.background == Color.Black
+    val themeColor = MaterialTheme.colorScheme.primary
     var showMenu by remember { mutableStateOf(false) }
     var showRenameDialog by remember { mutableStateOf(false) }
 
-    // Launcher for selecting playlist poster
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (isPressed) 0.96f else 1f,
+        animationSpec = spring(stiffness = Spring.StiffnessLow),
+        label = "CardScale"
+    )
+
     val posterLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
@@ -273,57 +327,98 @@ fun PlaylistCard(
         }
     }
 
-    Box(
+    val metalBrush = if (isDark) {
+        Brush.verticalGradient(
+            colors = listOf(Color(0xFF1C1C1C), Color(0xFF0F0F0F))
+        )
+    } else {
+        Brush.verticalGradient(
+            colors = listOf(Color(0xFFF9F9F9), Color(0xFFEBEBEB))
+        )
+    }
+
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            .aspectRatio(1f)
-            .clip(RoundedCornerShape(24.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            }
             .combinedClickable(
+                interactionSource = interactionSource,
+                indication = null,
                 onClick = onClick,
                 onLongClick = { showMenu = true }
             )
-            .drawBehind {
-                if (isDark) {
+    ) {
+        // MODERN FLOATING POSTER
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(1f)
+                .graphicsLayer {
+                    shape = RoundedCornerShape(24.dp)
+                    clip = true
+                    if (isDark) {
+                        shadowElevation = 12.dp.toPx()
+                        spotShadowColor = Color.White.copy(alpha = 0.15f)
+                        ambientShadowColor = Color.White.copy(alpha = 0.1f)
+                    } else {
+                        shadowElevation = 8.dp.toPx()
+                        spotShadowColor = Color.Black.copy(alpha = 0.1f)
+                    }
+                }
+                .drawBehind {
+                    val rimColor = if (isDark) Color.White.copy(alpha = 0.18f) else Color.Black.copy(alpha = 0.08f)
                     drawRoundRect(
-                        color = Color.White.copy(alpha = 0.15f),
+                        color = rimColor,
                         style = Stroke(width = 1.2.dp.toPx()),
                         cornerRadius = CornerRadius(24.dp.toPx())
                     )
                 }
-            },
-        contentAlignment = Alignment.Center
-    ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            // --- UPDATED: Use playlist custom artwork if available ---
+                .background(metalBrush, shape = RoundedCornerShape(24.dp)),
+            contentAlignment = Alignment.Center
+        ) {
             if (playlist.customArtworkUri != null) {
                 AsyncImage(
                     model = playlist.customArtworkUri,
                     contentDescription = null,
-                    modifier = Modifier.size(80.dp).clip(RoundedCornerShape(12.dp)),
+                    modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Crop
                 )
             } else {
-                Icon(
-                    if (playlist.isDefault) Icons.Default.AutoAwesome else Icons.Default.LibraryMusic,
-                    null,
-                    modifier = Modifier.size(48.dp),
-                    tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f)
-                )
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(themeColor.copy(alpha = 0.05f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        if (playlist.isDefault) Icons.Default.AutoAwesome else Icons.Default.LibraryMusic,
+                        null,
+                        modifier = Modifier.size(48.dp),
+                        tint = themeColor.copy(alpha = 0.6f)
+                    )
+                }
             }
-            Spacer(modifier = Modifier.height(12.dp))
-            Text(
-                playlist.name,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-            Text(
-                "${playlist.tracks.size} tracks",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.9f)
-            )
         }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        Text(
+            playlist.name,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.ExtraBold,
+            color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 1
+        )
+        Text(
+            "${playlist.tracks.size} TRACKS",
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+            letterSpacing = 0.5.sp
+        )
 
         DropdownMenu(
             expanded = showMenu,
@@ -338,7 +433,6 @@ fun PlaylistCard(
                 },
                 leadingIcon = { Icon(Icons.Default.Edit, null) }
             )
-            // NEW: Set Poster Option
             DropdownMenuItem(
                 text = { Text("Set Poster") },
                 onClick = {
@@ -347,7 +441,6 @@ fun PlaylistCard(
                 },
                 leadingIcon = { Icon(Icons.Default.Image, null) }
             )
-            // NEW: Delete Playlist Option (for non-default playlists)
             if (!playlist.isDefault) {
                 DropdownMenuItem(
                     text = { Text("Delete", color = Color.Red) },
@@ -365,7 +458,7 @@ fun PlaylistCard(
         RenamePlaylistDialog(
             currentName = playlist.name,
             onDismiss = { showRenameDialog = false },
-            onConfirm = { 
+            onConfirm = {
                 viewModel.renamePlaylist(playlist.id, it)
                 showRenameDialog = false
             }
@@ -425,6 +518,7 @@ fun PlaylistDetailView(
     var showAddTracksDialog by remember { mutableStateOf(false) }
     val lazyListState = rememberLazyListState()
     val density = LocalDensity.current
+    val primaryColor = MaterialTheme.colorScheme.primary
 
     var draggedIndex by remember { mutableStateOf<Int?>(null) }
     var dragOffset by remember { mutableFloatStateOf(0f) }
@@ -457,11 +551,22 @@ fun PlaylistDetailView(
 
     Column(modifier = Modifier.fillMaxSize()) {
         PlaylistHeader(
-            playlist = playlist, // Updated to pass playlist object for artwork
+            playlist = playlist,
             isShuffleOn = uiState.shuffleModeEnabled,
-            onPlayAll = { if (playlist.tracks.isNotEmpty()) viewModel.setTrack(playlist.tracks[0]) },
+            onPlayAll = {
+                if (playlist.tracks.isNotEmpty()) {
+                    viewModel.playPlaylist(playlist.tracks, 0, playlist.id)
+                }
+            },
             onAddTracks = { showAddTracksDialog = true },
             onToggleShuffle = { viewModel.toggleShuffle() }
+        )
+
+        // THIN DIVIDER
+        HorizontalDivider(
+            modifier = Modifier.padding(horizontal = 24.dp),
+            thickness = 0.5.dp,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f)
         )
 
         if (playlist.tracks.isEmpty()) {
@@ -495,9 +600,12 @@ fun PlaylistDetailView(
                     .nestedScroll(nestedScrollConnection)
                     .graphicsLayer {
                         translationY = springOverscroll
-                        scaleY = 1f + (kotlin.math.abs(springOverscroll) / 6000f)
+                        // APPLY ELASTIC SCALE EFFECT
+                        val scale = 1f + (kotlin.math.abs(springOverscroll) / 8000f)
+                        scaleX = scale
+                        scaleY = scale
                     },
-                contentPadding = PaddingValues(bottom = 180.dp),
+                contentPadding = PaddingValues(bottom = 220.dp), // INCREASED TO CLEAR MINI PLAYER
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 itemsIndexed(
@@ -506,24 +614,26 @@ fun PlaylistDetailView(
                 ) { index, track ->
                     val isDragged = draggedIndex == index
 
-                    val itemHeightPx = with(density) { 80.dp.toPx() }
+                    // PRECISE HEIGHT MATCHING
+                    val itemHeightPx = with(density) { 84.dp.toPx() }
+
                     val targetIdx = if (draggedIndex != null) {
-                        (draggedIndex!! + (dragOffset / itemHeightPx).toInt()).coerceIn(0, playlist.tracks.size - 1)
+                        (draggedIndex!! + (dragOffset / itemHeightPx).roundToInt()).coerceIn(0, playlist.tracks.size - 1)
                     } else null
-                    
+
                     val displacementY by animateFloatAsState(
                         targetValue = if (draggedIndex != null && !isDragged) {
                             if (index > draggedIndex!! && index <= targetIdx!!) -itemHeightPx
                             else if (index < draggedIndex!! && index >= targetIdx!!) itemHeightPx
                             else 0f
                         } else 0f,
-                        animationSpec = weightedSpringSpec,
+                        animationSpec = spring(stiffness = 400f, dampingRatio = 0.85f),
                         label = "Displacement"
                     )
 
                     val verticalOffset by animateFloatAsState(
                         targetValue = if (isDragged) dragOffset else displacementY,
-                        animationSpec = if (isDragged) snap() else weightedSpringSpec,
+                        animationSpec = if (isDragged) snap() else spring(stiffness = 400f, dampingRatio = 0.85f),
                         label = "DragAnimation"
                     )
 
@@ -533,19 +643,39 @@ fun PlaylistDetailView(
                             .zIndex(if (isDragged) 10f else 0f)
                             .graphicsLayer {
                                 translationY = verticalOffset
-                                scaleX = if (isDragged) 1.03f else 1f
-                                scaleY = if (isDragged) 1.03f else 1f
-                                alpha = if (isDragged) 0.85f else 1f
+                                if (isDragged) {
+                                    scaleX = 1.05f
+                                    scaleY = 1.05f
+                                    alpha = 0.98f
+
+                                    // FIXED: ALIGNED GLOW SHADOW WITH SHAPE
+                                    shadowElevation = 24.dp.toPx()
+                                    shape = RoundedCornerShape(16.dp)
+                                    clip = false
+                                    spotShadowColor = primaryColor.copy(alpha = 0.6f)
+                                    ambientShadowColor = primaryColor.copy(alpha = 0.3f)
+                                }
                             }
+                            .then(
+                                if (isDragged) {
+                                    Modifier.background(
+                                        color = MaterialTheme.colorScheme.surfaceVariant,
+                                        shape = RoundedCornerShape(16.dp)
+                                    )
+                                } else Modifier
+                            )
                             .pointerInput(index) {
                                 detectDragGesturesAfterLongPress(
-                                    onDragStart = { 
+                                    onDragStart = {
                                         draggedIndex = index
+                                        dragOffset = 0f
                                         currentTargetIndex = index
                                     },
                                     onDragEnd = {
-                                        if (draggedIndex != null && currentTargetIndex != null && draggedIndex != currentTargetIndex) {
-                                            viewModel.moveTrack(playlist.id, draggedIndex!!, currentTargetIndex!!)
+                                        val from = draggedIndex
+                                        val to = currentTargetIndex
+                                        if (from != null && to != null && from != to) {
+                                            viewModel.moveTrack(playlist.id, from, to)
                                         }
                                         draggedIndex = null
                                         dragOffset = 0f
@@ -559,7 +689,7 @@ fun PlaylistDetailView(
                                     onDrag = { change, dragAmount ->
                                         change.consume()
                                         dragOffset += dragAmount.y
-                                        currentTargetIndex = (index + (dragOffset / itemHeightPx).toInt()).coerceIn(0, playlist.tracks.size - 1)
+                                        currentTargetIndex = (index + (dragOffset / itemHeightPx).roundToInt()).coerceIn(0, playlist.tracks.size - 1)
                                     }
                                 )
                             }
@@ -570,9 +700,9 @@ fun PlaylistDetailView(
                             artist = track.artist,
                             duration = track.duration,
                             isPlaying = track == uiState.currentTrack && uiState.isPlaying,
-                            onClick = { 
+                            onClick = {
                                 if (track == uiState.currentTrack) viewModel.togglePlayPause()
-                                else viewModel.setTrack(track)
+                                else viewModel.playPlaylist(playlist.tracks, index, playlist.id)
                             },
                             // NEW: THREE-DOT MENU FOR INSTANT REMOVAL
                             trailingContent = {
@@ -632,58 +762,42 @@ fun PlaylistHeader(
     onToggleShuffle: () -> Unit
 ) {
     val isDark = MaterialTheme.colorScheme.background == Color.Black
+    val themeColor = MaterialTheme.colorScheme.primary
 
-    Column(modifier = Modifier.padding(24.dp)) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(200.dp),
-            contentAlignment = Alignment.CenterStart
+    Column(modifier = Modifier.padding(horizontal = 24.dp, vertical = 20.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            // LAYER 1: Modern 3D Soft Light Spill (Moved slightly further inside)
+            // COMPACT POSTER WITH REFINED SLEEK GLOW
             Box(
                 modifier = Modifier
-                    .size(440.dp)
-                    .offset(x = -75.dp) // Nudged further inward toward the center of the poster
+                    .size(110.dp)
                     .drawBehind {
-                        val coreAlpha = if (isDark) 0.65f else 0.35f
-                        val ambientAlpha = if (isDark) 0.25f else 0.12f
-                        val glowColor = if (isDark) Color.White else Color.Black
-
+                        val glowAlpha = if (isDark) 0.18f else 0.08f
                         drawCircle(
                             brush = androidx.compose.ui.graphics.Brush.radialGradient(
-                                colors = listOf(
-                                    glowColor.copy(alpha = coreAlpha),
-                                    glowColor.copy(alpha = ambientAlpha),
-                                    Color.Transparent
-                                ),
+                                colors = listOf(themeColor.copy(alpha = glowAlpha), Color.Transparent),
                                 center = center,
-                                radius = size.maxDimension / 2f
+                                radius = size.maxDimension * 0.9f
                             ),
-                            radius = size.maxDimension / 2f,
+                            radius = size.maxDimension * 0.9f,
                             center = center
                         )
                     }
-            )
-
-            // LAYER 2: The Clipped Poster & Rim Border (With Elevated Depth)
-            Box(
-                modifier = Modifier
-                    .size(200.dp)
                     .graphicsLayer {
                         shadowElevation = 16.dp.toPx()
-                        shape = RoundedCornerShape(24.dp)
+                        shape = RoundedCornerShape(20.dp)
                         clip = true
-                        spotShadowColor = if (isDark) Color.White.copy(alpha = 0.2f) else Color.Black.copy(alpha = 0.3f)
-                        ambientShadowColor = if (isDark) Color.White.copy(alpha = 0.1f) else Color.Black.copy(alpha = 0.15f)
+                        spotShadowColor = if (isDark) Color.White.copy(alpha = 0.15f) else Color.Black.copy(alpha = 0.25f)
                     }
                     .background(MaterialTheme.colorScheme.surfaceVariant)
                     .drawBehind {
-                        val rimColor = if (isDark) Color.White.copy(alpha = 0.35f) else Color.Black.copy(alpha = 0.15f)
+                        val rimColor = if (isDark) Color.White.copy(alpha = 0.3f) else Color.Black.copy(alpha = 0.1f)
                         drawRoundRect(
                             color = rimColor,
-                            style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.5.dp.toPx()),
-                            cornerRadius = androidx.compose.ui.geometry.CornerRadius(24.dp.toPx())
+                            style = Stroke(width = 1.2.dp.toPx()),
+                            cornerRadius = CornerRadius(20.dp.toPx())
                         )
                     },
                 contentAlignment = Alignment.Center
@@ -699,43 +813,49 @@ fun PlaylistHeader(
                     Icon(
                         Icons.AutoMirrored.Filled.QueueMusic,
                         null,
-                        modifier = Modifier.size(80.dp),
-                        tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
+                        modifier = Modifier.size(48.dp),
+                        tint = themeColor.copy(alpha = 0.6f)
                     )
                 }
             }
+
+            Spacer(modifier = Modifier.width(24.dp))
+
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    playlist.name,
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Black,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 2
+                )
+                Text(
+                    "${playlist.tracks.size} tracks",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                )
+            }
         }
 
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(20.dp))
 
-        Text(
-            playlist.name,
-            style = MaterialTheme.typography.displayLarge.copy(fontSize = 32.sp),
-            fontWeight = FontWeight.Black,
-            color = MaterialTheme.colorScheme.onSurface
-        )
-        Text(
-            "${playlist.tracks.size} tracks in collection",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.9f)
-        )
-
-        Spacer(modifier = Modifier.height(24.dp))
-
-        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Box(modifier = Modifier.weight(1f).height(56.dp)) {
+        // COMPACT BUTTONS ROW
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Box(modifier = Modifier.weight(1.5f).height(48.dp)) {
                 LibraryThreeDButton(
                     onClick = onPlayAll,
-                    text = "PLAY ALL",
+                    text = "PLAY",
                     icon = Icons.Default.PlayArrow
                 )
             }
-            Spacer(modifier = Modifier.width(12.dp))
-            Box(modifier = Modifier.size(56.dp)) {
-                LibraryThreeDButton(onClick = onAddTracks, text = "", icon = Icons.Default.Add)
+            Box(modifier = Modifier.weight(1f).height(48.dp)) {
+                LibraryThreeDButton(onClick = onAddTracks, text = "ADD", icon = Icons.Default.Add)
             }
-            Spacer(modifier = Modifier.width(12.dp))
-            Box(modifier = Modifier.size(56.dp)) {
+            Box(modifier = Modifier.size(48.dp)) {
                 LibraryThreeDButton(
                     onClick = onToggleShuffle,
                     text = "",

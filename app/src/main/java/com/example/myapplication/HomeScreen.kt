@@ -34,9 +34,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
@@ -184,14 +186,20 @@ fun HomeScreen(
         ) {
             // HEADER Area
             Box(modifier = Modifier.fillMaxWidth().padding(top = 16.dp), contentAlignment = Alignment.Center) {
-                Text("HOME", style = MaterialTheme.typography.titleLarge, letterSpacing = 2.sp)
+                Text(
+                    "HOME",
+                    style = MaterialTheme.typography.titleLarge,
+                    letterSpacing = 2.sp,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
             }
 
             HomeHeader(
                 onScan = { runWithPermission(audioPermission) { viewModel.loadLocalMusic() } },
                 onImport = { importLauncher.launch(arrayOf("audio/*")) },
                 searchQuery = uiState.searchQuery,
-                onSearchQueryChange = { viewModel.setSearchQuery(it) }
+                onSearchQueryChange = { viewModel.setSearchQuery(it) },
+                userName = uiState.userName
             )
 
             AnimatedVisibility(
@@ -223,8 +231,9 @@ fun HomeScreen(
                                 tracks = uiState.playlist.take(10),
                                 currentTrack = uiState.currentTrack,
                                 isPlaying = uiState.isPlaying,
-                                onTrackClick = {
-                                    viewModel.setTrack(it)
+                                onTrackClick = { track ->
+                                    val index = uiState.playlist.indexOf(track)
+                                    viewModel.playPlaylist(uiState.playlist, if (index != -1) index else 0, "recently_played")
                                     onOpenPlayer()
                                 }
                             )
@@ -288,7 +297,7 @@ fun HomeScreen(
                             translationY = springOverscroll
                             scaleY = 1f + (kotlin.math.abs(springOverscroll) / 4000f)
                         },
-                    contentPadding = PaddingValues(bottom = 180.dp, start = 16.dp, end = 16.dp),
+                    contentPadding = PaddingValues(bottom = 220.dp, start = 16.dp, end = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     items(uiState.filteredPlaylist) { track ->
@@ -299,7 +308,10 @@ fun HomeScreen(
                             playlists = uiState.playlists,
                             onPlayToggle = {
                                 if (track == uiState.currentTrack) viewModel.togglePlayPause()
-                                else viewModel.setTrack(track)
+                                else {
+                                    val index = uiState.filteredPlaylist.indexOf(track)
+                                    viewModel.playPlaylist(uiState.filteredPlaylist, index, "all_tracks")
+                                }
                             },
                             onAddToPlaylist = { viewModel.addTrackToPlaylist(track, it) },
                             onDelete = { viewModel.deleteTrack(track) },
@@ -376,11 +388,12 @@ fun HomeHeader(
     onScan: () -> Unit,
     onImport: () -> Unit,
     searchQuery: String,
-    onSearchQueryChange: (String) -> Unit
+    onSearchQueryChange: (String) -> Unit,
+    userName: String
 ) {
     Column(modifier = Modifier.padding(vertical = 16.dp, horizontal = 24.dp)) {
         Text(
-            "Welcome Back",
+            "Welcome, $userName",
             style = MaterialTheme.typography.displayLarge.copy(fontSize = 28.sp),
             fontWeight = FontWeight.Black,
             color = MaterialTheme.colorScheme.onSurface
@@ -500,21 +513,36 @@ fun ModernActionPill(
     )
 
     val isDark = MaterialTheme.colorScheme.background == Color.Black
+    
+    // INVERTED METALLIC LOGIC: Black in light mode, White in dark mode
+    val metalBrush = if (isDark) {
+        // Dark Mode -> White Metal Button
+        Brush.verticalGradient(
+            colors = listOf(Color(0xFFFFFFFF), Color(0xFFE5E5E5))
+        )
+    } else {
+        // Light Mode -> Black Metal Button
+        Brush.verticalGradient(
+            colors = listOf(Color(0xFF2C2C2C), Color(0xFF000000))
+        )
+    }
+
     val primaryColor = if (isDark) Color.White else Color.Black
-    val onPrimaryColor = if (isDark) Color.Black else Color.White
+    val contentColor = if (isDark) Color.Black else Color.White
 
     Box(
         contentAlignment = Alignment.Center,
         modifier = modifier
             .height(50.dp)
+            .shadow(
+                elevation = 12.dp,
+                shape = CircleShape,
+                spotColor = if (isDark) Color.White.copy(alpha = 0.15f) else Color.Black.copy(alpha = 0.3f),
+                ambientColor = if (isDark) Color.Transparent else Color.Black.copy(alpha = 0.1f)
+            )
             .graphicsLayer {
                 scaleX = scale
                 scaleY = scale
-                if (isDark) {
-                    shadowElevation = 8.dp.toPx()
-                    spotShadowColor = Color.White.copy(alpha = 0.2f)
-                    ambientShadowColor = Color.White.copy(alpha = 0.1f)
-                }
             }
             .clip(CircleShape)
             .then(
@@ -529,7 +557,17 @@ fun ModernActionPill(
                             )
                         }
                 } else {
-                    Modifier.background(primaryColor)
+                    Modifier
+                        .background(metalBrush)
+                        .drawBehind {
+                            // METALLIC RIM (Inverted for contrast)
+                            val rimColor = if (isDark) Color.Black.copy(alpha = 0.1f) else Color.White.copy(alpha = 0.2f)
+                            drawRoundRect(
+                                color = rimColor,
+                                style = Stroke(width = 1.2.dp.toPx()),
+                                cornerRadius = CornerRadius(25.dp.toPx())
+                            )
+                        }
                 }
             )
             .clickable(
@@ -542,11 +580,16 @@ fun ModernActionPill(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center
         ) {
-            Icon(icon, null, tint = if (isOutlined) primaryColor else onPrimaryColor, modifier = Modifier.size(18.dp))
+            Icon(
+                icon, 
+                null, 
+                tint = if (isOutlined) primaryColor else contentColor, 
+                modifier = Modifier.size(18.dp)
+            )
             Spacer(modifier = Modifier.width(8.dp))
             Text(
                 text = text,
-                color = if (isOutlined) primaryColor else onPrimaryColor,
+                color = if (isOutlined) primaryColor else contentColor,
                 fontWeight = FontWeight.ExtraBold,
                 fontSize = 11.sp,
                 letterSpacing = 1.sp
@@ -587,22 +630,42 @@ fun RecentlyPlayedMarquee(
         (tracks + tracks + tracks).forEach { track ->
             val isDark = MaterialTheme.colorScheme.background == Color.Black
             val isCurrent = track == currentTrack
+
+            val metalBrush = if (isDark) {
+                Brush.verticalGradient(
+                    colors = listOf(Color(0xFF1C1C1C), Color(0xFF0F0F0F))
+                )
+            } else {
+                Brush.verticalGradient(
+                    colors = listOf(Color(0xFFF9F9F9), Color(0xFFEBEBEB))
+                )
+            }
+
             Box(
                 modifier = Modifier
                     .width(160.dp)
                     .height(200.dp)
                     .graphicsLayer {
-                        if (isDark) {
-                            shadowElevation = 8.dp.toPx()
-                            spotShadowColor = Color.White.copy(alpha = 0.2f)
-                            ambientShadowColor = Color.White.copy(alpha = 0.1f)
-                        } else {
-                            shadowElevation = 4.dp.toPx()
-                        }
                         shape = RoundedCornerShape(24.dp)
                         clip = true
+                        if (isDark) {
+                            shadowElevation = 8.dp.toPx()
+                            spotShadowColor = Color.White.copy(alpha = 0.15f)
+                            ambientShadowColor = Color.White.copy(alpha = 0.1f)
+                        } else {
+                            shadowElevation = 6.dp.toPx()
+                            spotShadowColor = Color.Black.copy(alpha = 0.1f)
+                        }
                     }
-                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                    .drawBehind {
+                        val rimColor = if (isDark) Color.White.copy(alpha = 0.18f) else Color.Black.copy(alpha = 0.08f)
+                        drawRoundRect(
+                            color = rimColor,
+                            style = Stroke(width = 1.2.dp.toPx()),
+                            cornerRadius = CornerRadius(24.dp.toPx())
+                        )
+                    }
+                    .background(metalBrush, shape = RoundedCornerShape(24.dp))
                     .clickable { onTrackClick(track) }
                     .padding(12.dp)
             ) {
@@ -688,17 +751,45 @@ fun HomeTrackItem(
     val themeColor = MaterialTheme.colorScheme.primary
     val isDark = MaterialTheme.colorScheme.background == Color.Black
 
+    // BLACK METAL TINT GRADIENT
+    val metalBrush = if (isDark) {
+        Brush.verticalGradient(
+            colors = listOf(Color(0xFF1C1C1C), Color(0xFF0F0F0F))
+        )
+    } else {
+        Brush.verticalGradient(
+            colors = listOf(Color(0xFFF9F9F9), Color(0xFFEBEBEB))
+        )
+    }
+
     Surface(
-        color = MaterialTheme.colorScheme.surfaceVariant,
+        color = Color.Transparent,
         shape = RoundedCornerShape(20.dp),
         modifier = Modifier
             .fillMaxWidth()
             .graphicsLayer {
+                shape = RoundedCornerShape(20.dp)
+                clip = true
                 if (isDark) {
+                    shadowElevation = 8.dp.toPx()
+                    spotShadowColor = Color.White.copy(alpha = 0.15f)
+                    ambientShadowColor = Color.White.copy(alpha = 0.1f)
+                } else {
                     shadowElevation = 6.dp.toPx()
-                    spotShadowColor = Color.White.copy(alpha = 0.12f)
+                    spotShadowColor = Color.Black.copy(alpha = 0.1f)
                 }
             }
+            .drawBehind {
+                // METALLIC RIM HIGHLIGHT
+                val rimColor = if (isDark) Color.White.copy(alpha = 0.2f) else Color.Black.copy(alpha = 0.08f)
+                drawRoundRect(
+                    color = rimColor,
+                    style = Stroke(width = 1.2.dp.toPx()),
+                    cornerRadius = CornerRadius(20.dp.toPx())
+                )
+            }
+            .background(metalBrush, shape = RoundedCornerShape(20.dp))
+            .clickable { onPlayToggle() }
     ) {
         Row(
             modifier = Modifier
@@ -834,26 +925,65 @@ fun HomeTrackItem(
 
 @Composable
 fun EmptyHomeState(onScan: () -> Unit, onImport: () -> Unit) {
-    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Icon(Icons.Default.MusicOff, null, modifier = Modifier.size(80.dp), tint = Color.Gray.copy(alpha = 0.5f))
-            Spacer(modifier = Modifier.height(16.dp))
-            Text("Your library is empty", style = MaterialTheme.typography.titleLarge)
-            Text("Scan your device to find music", style = MaterialTheme.typography.bodyMedium, color = Color.Gray)
-            Row(modifier = Modifier.padding(top = 32.dp)) {
-                Button(
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(bottom = 120.dp), // Clear the floating nav bar
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+            modifier = Modifier.padding(horizontal = 32.dp)
+        ) {
+            Icon(
+                Icons.Default.MusicOff,
+                null,
+                modifier = Modifier.size(100.dp),
+                tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)
+            )
+            
+            Spacer(modifier = Modifier.height(24.dp))
+            
+            Text(
+                "Your library is empty",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Black,
+                color = MaterialTheme.colorScheme.onSurface,
+                textAlign = TextAlign.Center
+            )
+            
+            Spacer(modifier = Modifier.height(12.dp))
+            
+            Text(
+                "Scan your device or import your favorite tracks to start listening.",
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+                lineHeight = 26.sp
+            )
+            
+            Spacer(modifier = Modifier.height(48.dp))
+            
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.Center
+            ) {
+                ModernActionPill(
                     onClick = onScan,
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Text("Auto Scan")
-                }
+                    text = "AUTO SCAN",
+                    icon = Icons.Default.Search,
+                    isOutlined = false,
+                    modifier = Modifier.weight(1f)
+                )
                 Spacer(modifier = Modifier.width(16.dp))
-                OutlinedButton(
+                ModernActionPill(
                     onClick = onImport,
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Text("Manual Import")
-                }
+                    text = "IMPORT",
+                    icon = Icons.Default.FileUpload,
+                    isOutlined = true,
+                    modifier = Modifier.weight(1f)
+                )
             }
         }
     }

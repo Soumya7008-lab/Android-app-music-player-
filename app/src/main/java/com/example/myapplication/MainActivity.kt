@@ -29,11 +29,20 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.util.lerp
+import kotlin.math.absoluteValue
+import androidx.compose.foundation.pager.PagerDefaults
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
@@ -42,28 +51,62 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.myapplication.ui.theme.AppTheme
 import androidx.compose.material3.*
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import kotlinx.coroutines.launch
 
 enum class DragAnchors { Start, End }
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
+        val isDark = ThemeManager.isDarkTheme(this)
+        // Manually apply the Splash Theme based on the persisted setting
+        // This ensures the window background image is used during initial render
+        setTheme(if (isDark) R.style.Theme_MyApplication_Splash_Dark else R.style.Theme_MyApplication_Splash_Light)
+        
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            var darkTheme by remember { mutableStateOf(true) }
+            var darkTheme by remember { mutableStateOf(isDark) }
             AppTheme(darkTheme = darkTheme) {
                 val musicViewModel: MusicViewModel = viewModel()
+                
+                val lifecycleOwner = LocalLifecycleOwner.current
+                DisposableEffect(lifecycleOwner) {
+                    val observer = LifecycleEventObserver { _, event ->
+                        if (event == Lifecycle.Event.ON_START) {
+                            musicViewModel.setUiVisible(true)
+                        } else if (event == Lifecycle.Event.ON_STOP) {
+                            musicViewModel.setUiVisible(false)
+                        }
+                    }
+                    lifecycleOwner.lifecycle.addObserver(observer)
+                    onDispose {
+                        lifecycleOwner.lifecycle.removeObserver(observer)
+                    }
+                }
+
                 MainNavigation(
                     musicViewModel = musicViewModel,
                     isDarkTheme = darkTheme,
-                    onThemeToggle = { darkTheme = !darkTheme }
+                    onThemeToggle = {
+                        val newTheme = !darkTheme
+                        darkTheme = newTheme
+                        ThemeManager.saveThemePreference(this, newTheme)
+                    }
                 )
             }
         }
     }
+
+    override fun onStop() {
+        // Apply the icon change only when the user leaves the app
+        ThemeManager.applyIconChange(this)
+        super.onStop()
+    }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun MainNavigation(
     musicViewModel: MusicViewModel,
@@ -71,8 +114,78 @@ fun MainNavigation(
     onThemeToggle: () -> Unit
 ) {
     val uiState by musicViewModel.uiState.collectAsState()
+
+    if (uiState.isOnboardingRequired) {
+        OnboardingScreen(
+            onComplete = { name ->
+                musicViewModel.updateUserName(name)
+                musicViewModel.completeOnboarding()
+            }
+        )
+    } else {
+        MainNavigationContent(
+            musicViewModel = musicViewModel,
+            isDarkTheme = isDarkTheme,
+            onThemeToggle = onThemeToggle
+        )
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun MainNavigationContent(
+    musicViewModel: MusicViewModel,
+    isDarkTheme: Boolean,
+    onThemeToggle: () -> Unit
+) {
+    val uiState by musicViewModel.uiState.collectAsState()
     var showPlayer by remember { mutableStateOf(false) }
-    var currentTab by remember { mutableStateOf("home") }
+    var showSettings by remember { mutableStateOf(false) }
+    
+    val tabs = listOf("home", "library", "equalizer")
+    val pagerState = rememberPagerState(pageCount = { tabs.size })
+    val coroutineScope = rememberCoroutineScope()
+
+    // --- SMART BACK-NAVIGATION HISTORY ---
+    val navigationHistory = remember { mutableStateListOf(0) } // Start with Home
+
+    // Track tab changes to build history
+    LaunchedEffect(pagerState.currentPage) {
+        // Only add if it's a different tab than the last one in history
+        if (navigationHistory.lastOrNull() != pagerState.currentPage) {
+            navigationHistory.add(pagerState.currentPage)
+            // Limit history size to 6 to prevent "too much history"
+            if (navigationHistory.size > 6) {
+                navigationHistory.removeAt(0)
+            }
+        }
+    }
+
+    // Handle back button for tab history
+    // FIXED: Only enabled when NOT on Home. If on Home, it will close the app.
+    BackHandler(enabled = (showSettings || showPlayer || pagerState.currentPage != 0)) {
+        if (showSettings) {
+            showSettings = false
+        } else if (showPlayer) {
+            showPlayer = false
+        } else if (navigationHistory.size > 1) {
+            // Remove the current tab from history
+            navigationHistory.removeAt(navigationHistory.size - 1)
+            // Get the previous tab and remove it (so the LaunchedEffect can re-add it correctly)
+            val previousPage = navigationHistory.removeAt(navigationHistory.size - 1)
+            coroutineScope.launch {
+                pagerState.animateScrollToPage(previousPage)
+            }
+        } else {
+            // Fallback: Go back to Home
+            coroutineScope.launch {
+                pagerState.animateScrollToPage(0)
+            }
+        }
+    }
+
+    // Sync currentTab with pagerState (optional, but good for keeping logic clean)
+    val currentTab = tabs[pagerState.currentPage]
 
     val density = LocalDensity.current
     val screenHeight = LocalConfiguration.current.screenHeightDp.dp
@@ -93,6 +206,10 @@ fun MainNavigation(
         )
     }
 
+    // --- FULL-SCREEN LIQUID LAYER CALCS ---
+    val rawOffset = anchoredDraggableState.offset
+    val currentOffset = if (rawOffset.isNaN()) screenHeightPx else rawOffset
+
     LaunchedEffect(showPlayer) {
         if (showPlayer) {
             anchoredDraggableState.animateTo(DragAnchors.Start)
@@ -111,31 +228,66 @@ fun MainNavigation(
         .fillMaxSize()
         .background(MaterialTheme.colorScheme.background)) {
         
-        // --- BASE LAYER: VERTICAL APP FLOW ---
-        Column(modifier = Modifier.fillMaxSize()) {
-            // 1. Scrolling Content Area
-            Box(modifier = Modifier.weight(1f)) {
-                AnimatedContent(
-                    targetState = currentTab,
-                    transitionSpec = {
-                        val direction = when {
-                            targetState == "equalizer" -> 1
-                            targetState == "library" && initialState == "home" -> 1
-                            else -> -1
+        // --- BASE LAYER: OVERLAPPING APP FLOW (Truly Floating Nav) ---
+    // --- PURE LIQUID BOUNCE ENGINE ---
+    val bounceAnimatable = remember { Animatable(0f) }
+    var lastPage by remember { mutableIntStateOf(pagerState.currentPage) }
+    
+    // Watch for page changes to trigger a directional side-bounce
+    LaunchedEffect(pagerState.currentPage) {
+        val direction = if (pagerState.currentPage > lastPage) 1f else -1f
+        lastPage = pagerState.currentPage
+        
+        // Side-bounce "Kick": Snaps to an offset and springs back
+        // This works for both gestures and nav taps
+        bounceAnimatable.snapTo(direction * 0.25f) 
+        bounceAnimatable.animateTo(
+            targetValue = 0f,
+            animationSpec = spring(
+                stiffness = 300f, // Slower, more luxurious bounce
+                dampingRatio = 0.5f // Noticeable overshoot
+            )
+        )
+    }
+
+    // --- BASE LAYER: OVERLAPPING APP FLOW ---
+    // 1. Full-screen Scrolling Content Area (Swipeable Pager with Pure Bounce)
+    Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+        HorizontalPager(
+            state = pagerState,
+            modifier = Modifier.fillMaxSize(),
+            beyondViewportPageCount = 1, 
+            userScrollEnabled = true,
+            pageSpacing = 0.dp,
+            flingBehavior = PagerDefaults.flingBehavior(
+                state = pagerState,
+                snapAnimationSpec = spring(stiffness = 800f, dampingRatio = Spring.DampingRatioNoBouncy)
+            )
+        ) { page ->
+            // --- PURE BOUNCE TRANSITION (Optimized for 120Hz) ---
+            val pageOffset = (page - pagerState.currentPage) - pagerState.currentPageOffsetFraction
+            val absOffset = pageOffset.absoluteValue
+            
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        // 1. Fade & Scale (Standard Premium Feel)
+                        val lerpOffset = absOffset.coerceIn(0f, 1f)
+                        alpha = (1f - lerpOffset * 1.5f).coerceIn(0f, 1f)
+                        scaleX = 1f - (lerpOffset * 0.05f)
+                        scaleY = 1f - (lerpOffset * 0.05f)
+                        
+                        // 2. PURE SIDE-BOUNCE (NO PARALLAX)
+                        // Displaces the entire page content by the bounce amount
+                        // Only applied to the active page being viewed
+                        if (absOffset < 1f) {
+                            translationX = bounceAnimatable.value * size.width
                         }
-                        (slideInHorizontally(
-                            initialOffsetX = { it * direction },
-                            animationSpec = spring(stiffness = 500f, dampingRatio = 0.75f)
-                        ) + fadeIn()).togetherWith(
-                            slideOutHorizontally(
-                                targetOffsetX = { -it * direction / 2 },
-                                animationSpec = spring(stiffness = 500f)
-                            ) + fadeOut()
-                        )
-                    },
-                    label = "TabTransition"
-                ) { targetTab ->
-                    when (targetTab) {
+                    }
+                    .clipToBounds()
+            ) {
+                    when (tabs[page]) {
                         "home" -> HomeScreen(
                             viewModel = musicViewModel,
                             onMiniPlayerClick = { showPlayer = true },
@@ -143,8 +295,6 @@ fun MainNavigation(
                         )
                         "library" -> LibraryScreen(
                             viewModel = musicViewModel,
-                            isDarkTheme = isDarkTheme,
-                            onThemeToggle = onThemeToggle,
                             onMiniPlayerClick = { showPlayer = true }
                         )
                         "equalizer" -> EqualizerScreen(
@@ -153,30 +303,54 @@ fun MainNavigation(
                     }
                 }
             }
+        }
 
-            // 2. FIXED BOTTOM NAVIGATION AREA
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(Color.Transparent)
-                    .padding(horizontal = 20.dp)
-                    .padding(bottom = 32.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                MusicBottomNavigation(
-                    currentTab = currentTab,
-                    onTabSelect = { currentTab = it },
-                    isDarkTheme = isDarkTheme,
-                    onThemeToggle = onThemeToggle
+        // 2. FIXED FLOATING NAVIGATION AREA WITH GRADIENT MASK
+        val navParallaxProgress = (1f - (currentOffset / screenHeightPx)).coerceIn(0f, 1f)
+        val bgColor = MaterialTheme.colorScheme.background
+
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .align(Alignment.BottomCenter)
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(
+                            Color.Transparent,
+                            bgColor.copy(alpha = 0.8f),
+                            bgColor
+                        )
+                    )
                 )
-            }
+                .graphicsLayer {
+                    translationY = navParallaxProgress * 80.dp.toPx()
+                    alpha = (1f - navParallaxProgress * 1.5f).coerceIn(0f, 1f)
+                    scaleX = 1f - (navParallaxProgress * 0.08f)
+                    scaleY = 1f - (navParallaxProgress * 0.08f)
+                }
+                .padding(horizontal = 20.dp)
+                .padding(top = 48.dp, bottom = 32.dp), // Added top padding for the gradient
+            contentAlignment = Alignment.Center
+        ) {
+            MusicBottomNavigation(
+                currentTab = currentTab,
+                onTabSelect = { selectedTab ->
+                    val targetPage = tabs.indexOf(selectedTab)
+                    if (targetPage != -1 && targetPage != pagerState.currentPage) {
+                        coroutineScope.launch {
+                            pagerState.animateScrollToPage(targetPage)
+                        }
+                    }
+                },
+                onSettingsClick = { showSettings = true }
+            )
         }
 
         // --- OVERLAY LAYER: FLOATING MINI PLAYER ---
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(bottom = 120.dp), 
+                .padding(bottom = 110.dp), 
             contentAlignment = Alignment.BottomCenter
         ) {
             AnimatedVisibility(
@@ -193,7 +367,10 @@ fun MainNavigation(
                         trackArtist = track.artist,
                         artworkUri = track.customArtworkUri,
                         isPlaying = uiState.isPlaying,
+                        progress = uiState.progress,
+                        visualizerData = uiState.visualizerData,
                         onTogglePlay = { musicViewModel.togglePlayPause() },
+                        onForward = { musicViewModel.skipNext() },
                         onClick = { showPlayer = true }
                     )
                 }
@@ -239,6 +416,49 @@ fun MainNavigation(
             }
             BackHandler { showPlayer = false }
         }
+
+        // --- MODERN LIQUID SETTINGS LAYER ---
+        val settingsProgress by animateFloatAsState(
+            targetValue = if (showSettings) 1f else 0f,
+            animationSpec = spring(
+                stiffness = Spring.StiffnessLow,
+                dampingRatio = Spring.DampingRatioLowBouncy
+            ),
+            label = "SettingsAnimation"
+        )
+
+        if (settingsProgress > 0f) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        val scale = 0.85f + (0.15f * settingsProgress)
+                        scaleX = scale
+                        scaleY = scale
+                        alpha = settingsProgress.coerceIn(0f, 1f)
+                        translationY = (1f - settingsProgress) * size.height * 0.5f
+                        
+                        // Luxurious rounded corners that morph as it opens
+                        val cornerProgress = (1f - settingsProgress).coerceAtLeast(0f)
+                        shape = RoundedCornerShape((32 * cornerProgress).dp)
+                        clip = true
+                    }
+                    .background(MaterialTheme.colorScheme.background)
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = { /* BLOCK CLICKS FROM PASSING THROUGH */ }
+                    )
+            ) {
+                SettingsScreen(
+                    isDarkTheme = isDarkTheme,
+                    onThemeToggle = onThemeToggle,
+                    onBackClick = { showSettings = false },
+                    userName = uiState.userName,
+                    onUpdateName = { musicViewModel.updateUserName(it) }
+                )
+            }
+        }
     }
 }
 
@@ -246,43 +466,76 @@ fun MainNavigation(
 fun MusicBottomNavigation(
     currentTab: String,
     onTabSelect: (String) -> Unit,
-    isDarkTheme: Boolean,
-    onThemeToggle: () -> Unit
+    onSettingsClick: () -> Unit
 ) {
     val isDark = MaterialTheme.colorScheme.background == Color.Black
-    val surfaceColor = if (isDark) Color(0xFF1A1A1A) else Color(0xFFF9F9F9)
-    val pillShape = RoundedCornerShape(28.dp)
-    
+
+    // MACHINED CRYSTAL SURFACE BRUSH
+    val surfaceBrush = if (isDark) {
+        Brush.verticalGradient(
+            colors = listOf(Color(0xFF222222), Color(0xFF080808))
+        )
+    } else {
+        Brush.verticalGradient(
+            colors = listOf(Color(0xFFFFFFFF), Color(0xFFF2F2F2))
+        )
+    }
+
     Surface(
-        color = surfaceColor,
-        shape = pillShape,
         modifier = Modifier
             .fillMaxWidth()
-            .height(72.dp)
+            .height(82.dp) // INCREASED FROM 72.dp TO PREVENT CLIPPING
+            .shadow(
+                elevation = 24.dp,
+                shape = RoundedCornerShape(41.dp),
+                spotColor = if (isDark) Color.White.copy(alpha = 0.2f) else Color.Black.copy(alpha = 0.75f), // SLIGHTLY INCREASED BLACK SHADOW
+                ambientColor = if (isDark) Color.Transparent else Color.Black.copy(alpha = 0.28f) // SLIGHTLY INCREASED AMBIENT
+            )
             .graphicsLayer {
-                // SURGICAL FIX: Shadow must follow shape to avoid sharp corners
-                shape = pillShape
+                shape = RoundedCornerShape(41.dp)
                 clip = true
-
-                if (isDark) {
-                    shadowElevation = 16.dp.toPx()
-                    spotShadowColor = Color.White.copy(alpha = 0.25f)
-                    ambientShadowColor = Color.White.copy(alpha = 0.1f)
-                } else {
-                    shadowElevation = 8.dp.toPx()
-                }
             }
             .drawBehind {
-                val rimColor = if (isDark) Color.White.copy(alpha = 0.15f) else Color.Black.copy(alpha = 0.08f)
+                // 1. SILKY GRAIN TEXTURE
+                val grainAlpha = if (isDark) 0.1f else 0.05f
+                val grainColor = if (isDark) Color.White else Color.Black
+                val step = 4.dp.toPx()
+                for (x in 0..size.width.toInt() step step.toInt()) {
+                    for (y in 0..size.height.toInt() step step.toInt()) {
+                        if ((x * 13 + y * 17) % 11 == 0) {
+                            drawCircle(
+                                color = grainColor.copy(alpha = grainAlpha),
+                                radius = 0.6.dp.toPx(),
+                                center = Offset(x.toFloat(), y.toFloat())
+                            )
+                        }
+                    }
+                }
+
+                // 2. DIAMOND-CUT DOUBLE RIM
+                val outerRimColor = if (isDark) Color.White.copy(alpha = 0.25f) else Color.Black.copy(alpha = 0.12f)
+                val innerRimColor = if (isDark) Color.White.copy(alpha = 0.08f) else Color.White.copy(alpha = 0.5f)
+                
+                // Outer edge
                 drawRoundRect(
-                    color = rimColor,
-                    style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.2.dp.toPx()),
-                    cornerRadius = CornerRadius(28.dp.toPx())
+                    color = outerRimColor,
+                    style = Stroke(width = 1.2.dp.toPx()),
+                    cornerRadius = CornerRadius(41.dp.toPx())
+                )
+                // Inner highlight
+                drawRoundRect(
+                    color = innerRimColor,
+                    topLeft = Offset(1.2.dp.toPx(), 1.2.dp.toPx()),
+                    size = Size(size.width - 2.4.dp.toPx(), size.height - 2.4.dp.toPx()),
+                    style = Stroke(width = 0.6.dp.toPx()),
+                    cornerRadius = CornerRadius(39.8.dp.toPx())
                 )
             }
+            .background(surfaceBrush),
+        color = Color.Transparent
     ) {
         Row(
-            modifier = Modifier.fillMaxSize().padding(horizontal = 8.dp),
+            modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceAround
         ) {
@@ -305,10 +558,10 @@ fun MusicBottomNavigation(
                 onClick = { onTabSelect("equalizer") }
             )
             NavPillItem(
-                icon = if (isDarkTheme) Icons.Default.DarkMode else Icons.Default.LightMode,
-                label = "Theme",
+                icon = Icons.Default.Settings,
+                label = "Settings",
                 isSelected = false,
-                onClick = onThemeToggle
+                onClick = onSettingsClick
             )
         }
     }
@@ -325,45 +578,71 @@ fun NavPillItem(
     val isPressed by interactionSource.collectIsPressedAsState()
     
     val animatedScale by animateFloatAsState(
-        targetValue = if (isPressed) 0.9f else 1f,
-        animationSpec = spring(stiffness = 500f, dampingRatio = 0.6f),
+        targetValue = if (isPressed) 0.88f else 1f,
+        animationSpec = spring(stiffness = 600f, dampingRatio = 0.55f),
         label = "NavScale"
     )
 
     val contentColor by animateColorAsState(
-        targetValue = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-        animationSpec = tween(300),
+        targetValue = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+        animationSpec = tween(400, easing = LinearOutSlowInEasing),
         label = "NavColor"
     )
 
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier
-            .clip(RoundedCornerShape(20.dp))
+            .clip(RoundedCornerShape(24.dp))
             .clickable(
                 interactionSource = interactionSource,
                 indication = null,
                 onClick = onClick
             )
-            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .padding(horizontal = 14.dp, vertical = 8.dp)
             .graphicsLayer {
                 scaleX = animatedScale
                 scaleY = animatedScale
             }
     ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = label,
-            tint = contentColor,
-            modifier = Modifier.size(26.dp)
-        )
-        AnimatedVisibility(visible = isSelected) {
+        // 3D ICON CONTAINER
+        Box(
+            modifier = Modifier
+                .size(42.dp)
+                .graphicsLayer {
+                    if (isSelected) {
+                        shadowElevation = 12.dp.toPx()
+                        shape = CircleShape
+                        clip = true
+                        spotShadowColor = contentColor.copy(alpha = 0.4f)
+                    }
+                }
+                .background(
+                    if (isSelected) contentColor.copy(alpha = 0.1f) else Color.Transparent,
+                    CircleShape
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = label,
+                tint = contentColor,
+                modifier = Modifier.size(26.dp)
+            )
+        }
+        
+        AnimatedVisibility(
+            visible = isSelected,
+            enter = expandVertically(expandFrom = Alignment.Top) + fadeIn(),
+            exit = shrinkVertically(shrinkTowards = Alignment.Top) + fadeOut()
+        ) {
             Text(
-                text = label,
-                style = MaterialTheme.typography.labelSmall,
+                text = label.uppercase(),
+                style = MaterialTheme.typography.labelSmall.copy(
+                    fontWeight = FontWeight.Black,
+                    letterSpacing = 1.sp
+                ),
                 color = contentColor,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(top = 2.dp)
+                modifier = Modifier.padding(top = 4.dp)
             )
         }
     }

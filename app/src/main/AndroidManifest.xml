@@ -22,15 +22,40 @@
             android:name=".MainActivity"
             android:exported="true"
             android:launchMode="singleTop"
+            android:theme="@style/Theme.MyApplication.Splash.Dark"
+            android:windowSoftInputMode="adjustResize" />
+
+        <!-- Activity Alias for Dark Mode Icon -->
+        <activity-alias
+            android:name=".MainActivityDark"
+            android:enabled="true"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher"
+            android:roundIcon="@mipmap/ic_launcher_round"
             android:label="@string/app_name"
-            android:theme="@style/Theme.MyApplication"
-            android:windowSoftInputMode="adjustResize">
+            android:targetActivity=".MainActivity"
+            android:theme="@style/Theme.MyApplication.Splash.Dark">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
-
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-        </activity>
+        </activity-alias>
+
+        <!-- Activity Alias for Light Mode Icon -->
+        <activity-alias
+            android:name=".MainActivityLight"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_light"
+            android:roundIcon="@mipmap/ic_launcher_round_light"
+            android:label="@string/app_name"
+            android:targetActivity=".MainActivity"
+            android:theme="@style/Theme.MyApplication.Splash.Light">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
 
         <service
             android:name=".audio.MusicService"

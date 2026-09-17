@@ -3,7 +3,9 @@ package com.example.myapplication
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -14,13 +16,19 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.sp
 import androidx.media3.common.Player
 import coil.compose.AsyncImage
@@ -41,13 +49,14 @@ fun PlayerScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .drawBehind {
+                    val auraColor = if (isDark) Color(0xFF050505) else themeColor.copy(alpha = 0.02f)
                     drawCircle(
                         brush = Brush.radialGradient(
-                            colors = listOf(themeColor.copy(alpha = if (isDark) 0.12f else 0.04f), Color.Transparent),
+                            colors = listOf(auraColor, Color.Transparent),
                             center = center,
-                            radius = size.maxDimension * 0.8f
+                            radius = size.maxDimension * 0.5f
                         ),
-                        radius = size.maxDimension * 0.8f,
+                        radius = size.maxDimension * 0.5f,
                         center = center
                     )
                 }
@@ -88,14 +97,31 @@ fun PlayerScreen(
                         modifier = Modifier
                             .size(320.dp)
                             .drawBehind {
-                                val auraAlpha = if (isDark) 0.35f else 0.12f
+                                val auraColor = if (isDark) Color(0xFF121212) else themeColor.copy(alpha = 0.08f)
+                                val glowRadius = if (isDark) size.maxDimension / 2 + 10.dp.toPx() else size.maxDimension / 2 + 30.dp.toPx()
+                                
+                                // Soft shadow for elevation
+                                val shadowAlpha = if (isDark) 0.5f else 0.25f
+                                val shadowOffset = if (isDark) 10.dp.toPx() else 18.dp.toPx()
+                                val shadowRadius = if (isDark) size.maxDimension / 2 else size.maxDimension * 0.65f
+                                
                                 drawCircle(
                                     brush = Brush.radialGradient(
-                                        colors = listOf(themeColor.copy(alpha = auraAlpha), Color.Transparent),
-                                        center = center,
-                                        radius = size.maxDimension / 2 + 50.dp.toPx()
+                                        colors = listOf(Color.Black.copy(alpha = shadowAlpha), Color.Transparent),
+                                        center = center + Offset(0f, shadowOffset),
+                                        radius = shadowRadius
                                     ),
-                                    radius = size.maxDimension / 2 + 50.dp.toPx(),
+                                    radius = shadowRadius,
+                                    center = center + Offset(0f, shadowOffset)
+                                )
+
+                                drawCircle(
+                                    brush = Brush.radialGradient(
+                                        colors = listOf(auraColor, Color.Transparent),
+                                        center = center,
+                                        radius = glowRadius
+                                    ),
+                                    radius = glowRadius,
                                     center = center
                                 )
                             }
@@ -104,17 +130,43 @@ fun PlayerScreen(
                     AnimatedContent(
                         targetState = currentTrack,
                         transitionSpec = {
-                            if (uiState.skipDirection >= 0) {
-                                (slideInHorizontally(animationSpec = tween(500, easing = EaseOutQuart)) { width -> width } + fadeIn()).togetherWith(
-                                    slideOutHorizontally(animationSpec = tween(500, easing = EaseOutQuart)) { width -> -width } + fadeOut())
-                            } else {
-                                (slideInHorizontally(animationSpec = tween(500, easing = EaseOutQuart)) { width -> -width } + fadeIn()).togetherWith(
-                                    slideOutHorizontally(animationSpec = tween(500, easing = EaseOutQuart)) { width -> width } + fadeOut())
-                            }
+                            // Cinematic Pace: Smooth and deliberate
+                            val springSpec = spring<IntOffset>(dampingRatio = 0.85f, stiffness = 120f)
+                            val scaleSpring = spring<Float>(dampingRatio = 0.75f, stiffness = 80f)
+                            val fadeDuration = 700
+                            
+                            (slideInHorizontally(animationSpec = springSpec) { width -> if (uiState.skipDirection >= 0) width / 2 else -width / 2 } + 
+                             fadeIn(animationSpec = tween(fadeDuration)) + 
+                             scaleIn(initialScale = 0.92f, animationSpec = scaleSpring)).togetherWith(
+                                slideOutHorizontally(animationSpec = springSpec) { width -> if (uiState.skipDirection >= 0) -width / 2 else width / 2 } + 
+                                fadeOut(animationSpec = tween(fadeDuration)) + 
+                                scaleOut(targetScale = 0.92f, animationSpec = scaleSpring)
+                            )
                         },
                         label = "PosterTransition"
                     ) { track ->
-                        Box(contentAlignment = Alignment.Center) {
+                        var totalDragX by remember { mutableStateOf(0f) }
+                        
+                        Box(
+                            contentAlignment = Alignment.Center,
+                            modifier = Modifier.pointerInput(Unit) {
+                                detectHorizontalDragGestures(
+                                    onDragStart = { totalDragX = 0f },
+                                    onDragEnd = {
+                                        if (totalDragX < -50.dp.toPx()) {
+                                            viewModel.skipNext()
+                                        } else if (totalDragX > 50.dp.toPx()) {
+                                            viewModel.skipPrevious()
+                                        }
+                                    },
+                                    onHorizontalDrag = { change, dragAmount ->
+                                        change.consume()
+                                        totalDragX += dragAmount
+                                    }
+                                )
+                            }
+                        ) {
+                            // THE POSTER FRAME
                             Box(
                                 modifier = Modifier
                                     .size(280.dp)
@@ -126,19 +178,19 @@ fun PlayerScreen(
                                     .clip(RoundedCornerShape(32.dp))
                                     .background(
                                         brush = Brush.verticalGradient(
-                                            colors = if (isDark) listOf(Color(0xFF1E1E1E), Color(0xFF0D0D0D))
+                                            colors = if (isDark) listOf(Color(0xFF121212), Color(0xFF050505))
                                             else listOf(Color(0xFFFFFFFF), Color(0xFFF8F9FA))
                                         )
                                     )
                                     .drawBehind {
-                                        val rimColor = if (isDark) Color.White.copy(alpha = 0.15f) else Color.Black.copy(alpha = 0.05f)
+                                        val rimColor = if (isDark) Color(0xFF222222) else Color.Black.copy(alpha = 0.05f)
                                         drawRect(
                                             color = rimColor,
-                                            style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.dp.toPx())
+                                            style = Stroke(width = 1.dp.toPx())
                                         )
                                         drawRect(
-                                            color = themeColor.copy(alpha = 0.05f),
-                                            style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.dp.toPx())
+                                            color = themeColor.copy(alpha = if (isDark) 0.02f else 0.05f),
+                                            style = Stroke(width = 2.dp.toPx())
                                         )
                                     }
                             ) {
@@ -147,7 +199,6 @@ fun PlayerScreen(
                                         model = track.customArtworkUri,
                                         contentDescription = null,
                                         modifier = Modifier.fillMaxSize(),
-                                        // PERFECTED: FULLY OCCUPY POSTER FRAME
                                         contentScale = ContentScale.Crop
                                     )
                                 } else {
@@ -156,6 +207,54 @@ fun PlayerScreen(
                                         contentDescription = null,
                                         modifier = Modifier.size(120.dp).align(Alignment.Center),
                                         tint = themeColor.copy(alpha = 0.5f)
+                                    )
+                                }
+                            }
+
+                            // HOVERING SPATIAL AUDIO TOGGLE - SITS INSIDE THE POSTER
+                            val is16D = uiState.is16DEnabled
+                            Surface(
+                                onClick = { viewModel.toggle16D() },
+                                shape = CircleShape,
+                                color = if (isDark) Color(0xFF1A1A1A) else Color.White,
+                                shadowElevation = if (is16D) 8.dp else 4.dp,
+                                modifier = Modifier
+                                    .size(44.dp)
+                                    .align(Alignment.BottomEnd)
+                                    .padding(bottom = 12.dp, end = 12.dp)
+                            ) {
+                                Box(
+                                    contentAlignment = Alignment.Center,
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .drawBehind {
+                                            // Soft activation grey shadow for both modes
+                                            if (is16D) {
+                                                drawCircle(
+                                                    brush = Brush.radialGradient(
+                                                        colors = listOf(
+                                                            (if (isDark) Color(0xFF444444) else Color(0xFFDDDDDD)).copy(alpha = 0.4f), 
+                                                            Color.Transparent
+                                                        ),
+                                                        center = center,
+                                                        radius = size.maxDimension * 0.9f
+                                                    ),
+                                                    radius = size.maxDimension * 0.9f,
+                                                    center = center
+                                                )
+                                            }
+                                            val rimColor = if (isDark) Color(0xFF333333) else Color.Black.copy(alpha = 0.08f)
+                                            drawCircle(
+                                                color = rimColor,
+                                                style = Stroke(width = 1.dp.toPx())
+                                            )
+                                        }
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.SurroundSound,
+                                        contentDescription = "Spatial Audio",
+                                        modifier = Modifier.size(22.dp),
+                                        tint = if (is16D) themeColor else (if (isDark) Color.DarkGray else Color.Gray)
                                     )
                                 }
                             }
@@ -241,18 +340,17 @@ fun PlayerScreen(
                     }
                 }
 
-                Surface(
-                    color = themeColor.copy(alpha = 0.08f),
-                    shape = RoundedCornerShape(16.dp),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, themeColor.copy(alpha = 0.2f))
+                // BRANDING LOGO SECTION - HIGH RES STYLE
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier.size(48.dp)
                 ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.SurroundSound, null, modifier = Modifier.size(18.dp), tint = themeColor)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("3D SPATIAL AUDIO", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Black, letterSpacing = 1.5.sp, color = themeColor)
-                    }
+                    Icon(
+                        imageVector = Icons.Default.GraphicEq,
+                        contentDescription = "Branding Logo",
+                        modifier = Modifier.size(24.dp).graphicsLayer { alpha = 0.6f },
+                        tint = if (isDark) Color.Gray else Color.Black
+                    )
                 }
             }
         }
