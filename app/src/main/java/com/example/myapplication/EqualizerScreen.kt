@@ -10,6 +10,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -200,7 +201,43 @@ fun EqualizerScreen(
                 }
             }
 
-            // SAVE AS CUSTOM PRESET BUTTON (SMALLER)
+            // RESET STUDIO ENGINE BUTTON (same design as other buttons)
+            Surface(
+                modifier = Modifier
+                    .weight(0.8f)
+                    .fillMaxHeight()
+                    .shadow(
+                        elevation = 12.dp,
+                        shape = RoundedCornerShape(16.dp),
+                        spotColor = if (isDark) themeColor.copy(alpha = 0.4f) else Color.Black.copy(alpha = 0.4f)
+                    )
+                    .graphicsLayer {
+                        shape = RoundedCornerShape(16.dp)
+                        clip = true
+                    }
+                    .drawBehind {
+                        val rimColor = if (isDark) Color.Black.copy(alpha = 0.1f) else Color.White.copy(alpha = 0.2f)
+                        drawRoundRect(
+                            color = rimColor,
+                            style = Stroke(width = 1.2.dp.toPx()),
+                            cornerRadius = CornerRadius(16.dp.toPx())
+                        )
+                    }
+                    .background(metalBrush)
+                    .clickable { viewModel.resetStudioEngine() },
+                color = Color.Transparent
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(18.dp), tint = contentColor)
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("RESET", fontWeight = FontWeight.Black, fontSize = 12.sp, color = contentColor, letterSpacing = 1.sp)
+                }
+            }
+
+            // SAVE AS CUSTOM PRESET BUTTON
             Surface(
                 modifier = Modifier
                     .weight(1.2f)

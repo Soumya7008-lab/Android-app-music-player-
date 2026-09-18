@@ -619,6 +619,36 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         controller?.sendCustomCommand(SessionCommand("UPDATE_TEMPO", Bundle.EMPTY), args)
     }
 
+    fun resetStudioEngine() {
+        // Reset EQ bands to flat (0.5 = 0dB)
+        val flatBands = listOf(0.5f, 0.5f, 0.5f, 0.5f, 0.5f)
+        _uiState.update { it.copy(
+            eqBands = flatBands,
+            selectedPreset = "Flat",
+            clarityLevel = 0.5f,
+            snappiness = 0.5f,
+            soundstageWidth = 1.0f,
+            tempo = 1.0f,
+            masterVolume = 1.0f
+        ) }
+        // Send all flat EQ bands to service
+        flatBands.forEachIndexed { index, value ->
+            sendEqUpdateToService(index, value)
+        }
+        // Reset Titan params
+        val titanArgs = Bundle().apply {
+            putFloat("clarity", 0.5f)
+            putFloat("snappiness", 0.5f)
+            putFloat("soundstage", 1.0f)
+        }
+        controller?.sendCustomCommand(SessionCommand("UPDATE_TITAN_PARAMS", Bundle.EMPTY), titanArgs)
+        // Reset tempo
+        val tempoArgs = Bundle().apply { putFloat("tempo", 1.0f) }
+        controller?.sendCustomCommand(SessionCommand("UPDATE_TEMPO", Bundle.EMPTY), tempoArgs)
+        // Reset volume
+        controller?.volume = 1.0f
+    }
+
     fun updateUserName(name: String) {
         PreferenceManager.setUserName(app, name)
         _uiState.update { it.copy(userName = name) }

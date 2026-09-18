@@ -69,7 +69,7 @@ class MusicService : MediaLibraryService() {
     private var titanClarity = 0.5f
     private var titanSnappiness = 0.5f
     private var titanSoundstage = 1.0f
-    private var titanRotationSpeed = 7.0f
+    private var titanRotationSpeed = 1.0f
     private var titanEqGains = floatArrayOf(0f, 0f, 0f, 0f, 0f)
     
     private val serviceScope = CoroutineScope(Dispatchers.IO)
