@@ -504,14 +504,6 @@ fun ModernActionPill(
     isOutlined: Boolean,
     modifier: Modifier = Modifier
 ) {
-    val interactionSource = remember { MutableInteractionSource() }
-    val isPressed by interactionSource.collectIsPressedAsState()
-    val scale by animateFloatAsState(
-        targetValue = if (isPressed) 0.94f else 1f,
-        animationSpec = spring(stiffness = 500f, dampingRatio = 0.5f),
-        label = "PillScale"
-    )
-
     val isDark = MaterialTheme.colorScheme.background == Color.Black
     
     // INVERTED METALLIC LOGIC: Black in light mode, White in dark mode
@@ -534,16 +526,13 @@ fun ModernActionPill(
         contentAlignment = Alignment.Center,
         modifier = modifier
             .height(50.dp)
+            .bounceClick(onClick = onClick)
             .shadow(
                 elevation = 12.dp,
                 shape = CircleShape,
                 spotColor = if (isDark) Color.White.copy(alpha = 0.15f) else Color.Black.copy(alpha = 0.3f),
                 ambientColor = if (isDark) Color.Transparent else Color.Black.copy(alpha = 0.1f)
             )
-            .graphicsLayer {
-                scaleX = scale
-                scaleY = scale
-            }
             .clip(CircleShape)
             .then(
                 if (isOutlined) {
@@ -569,11 +558,6 @@ fun ModernActionPill(
                             )
                         }
                 }
-            )
-            .clickable(
-                interactionSource = interactionSource,
-                indication = null,
-                onClick = onClick
             )
     ) {
         Row(

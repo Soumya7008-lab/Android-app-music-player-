@@ -43,6 +43,9 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
@@ -240,29 +243,13 @@ fun PlaylistLandingView(
 fun CreatePlaylistCard(onClick: () -> Unit) {
     val themeColor = MaterialTheme.colorScheme.primary
 
-    val interactionSource = remember { MutableInteractionSource() }
-    val isPressed by interactionSource.collectIsPressedAsState()
-    val scale by animateFloatAsState(
-        targetValue = if (isPressed) 0.96f else 1f,
-        animationSpec = spring(stiffness = Spring.StiffnessLow),
-        label = "CreateCardScale"
-    )
-
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .aspectRatio(0.85f) // More modern rectangular profile
-            .graphicsLayer {
-                scaleX = scale
-                scaleY = scale
-            }
+            .bounceClick(scaleDown = 0.96f, onClick = onClick)
             .clip(RoundedCornerShape(28.dp))
             .background(themeColor.copy(alpha = 0.05f))
-            .clickable(
-                interactionSource = interactionSource,
-                indication = null,
-                onClick = onClick
-            )
             .drawBehind {
                 drawRoundRect(
                     color = themeColor.copy(alpha = 0.3f),
@@ -311,14 +298,6 @@ fun PlaylistCard(
     var showMenu by remember { mutableStateOf(false) }
     var showRenameDialog by remember { mutableStateOf(false) }
 
-    val interactionSource = remember { MutableInteractionSource() }
-    val isPressed by interactionSource.collectIsPressedAsState()
-    val scale by animateFloatAsState(
-        targetValue = if (isPressed) 0.96f else 1f,
-        animationSpec = spring(stiffness = Spring.StiffnessLow),
-        label = "CardScale"
-    )
-
     val posterLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
@@ -337,6 +316,13 @@ fun PlaylistCard(
         )
     }
 
+    var isPressed by remember { mutableStateOf(false) }
+    val scale by animateFloatAsState(
+        targetValue = if (isPressed) 0.96f else 1f,
+        animationSpec = spring(stiffness = Spring.StiffnessLow),
+        label = "CardScale"
+    )
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -345,11 +331,19 @@ fun PlaylistCard(
                 scaleY = scale
             }
             .combinedClickable(
-                interactionSource = interactionSource,
+                interactionSource = remember { MutableInteractionSource() },
                 indication = null,
                 onClick = onClick,
                 onLongClick = { showMenu = true }
             )
+            .pointerInput(Unit) {
+                awaitEachGesture {
+                    awaitFirstDown(requireUnconsumed = false)
+                    isPressed = true
+                    waitForUpOrCancellation()
+                    isPressed = false
+                }
+            }
     ) {
         // MODERN FLOATING POSTER
         Box(
@@ -982,8 +976,7 @@ fun LibraryThreeDButton(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     isActive: Boolean = false
 ) {
-    val interactionSource = remember { MutableInteractionSource() }
-    val isPressed by interactionSource.collectIsPressedAsState()
+    var isPressed by remember { mutableStateOf(false) }
     val scale by animateFloatAsState(
         targetValue = if (isPressed) 0.94f else 1f,
         animationSpec = spring(dampingRatio = 0.5f, stiffness = 400f),
@@ -1006,6 +999,19 @@ fun LibraryThreeDButton(
         contentAlignment = Alignment.Center,
         modifier = Modifier
             .fillMaxSize()
+            .pointerInput(Unit) {
+                awaitEachGesture {
+                    awaitFirstDown(requireUnconsumed = false)
+                    isPressed = true
+                    waitForUpOrCancellation()
+                    isPressed = false
+                }
+            }
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onClick
+            )
             .graphicsLayer {
                 scaleX = scale
                 scaleY = scale
@@ -1042,11 +1048,6 @@ fun LibraryThreeDButton(
             }
             .clip(RoundedCornerShape(16.dp))
             .background(surfaceColor)
-            .clickable(
-                interactionSource = interactionSource,
-                indication = null,
-                onClick = onClick
-            )
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
             Icon(icon, null, tint = contentColor, modifier = Modifier.size(24.dp))

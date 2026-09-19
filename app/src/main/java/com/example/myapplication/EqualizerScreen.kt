@@ -18,13 +18,18 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
@@ -37,6 +42,22 @@ fun EqualizerScreen(
     val isDark = MaterialTheme.colorScheme.background == Color.Black
     var showSaveDialog by remember { mutableStateOf(false) }
     var presetToDelete by remember { mutableStateOf<String?>(null) }
+
+    val noParentScrollConnection = remember {
+        object : NestedScrollConnection {
+            override fun onPostScroll(
+                consumed: Offset,
+                available: Offset,
+                source: NestedScrollSource
+            ): Offset {
+                return Offset(x = available.x, y = 0f)
+            }
+
+            override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
+                return Velocity(x = available.x, y = 0f)
+            }
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -52,7 +73,7 @@ fun EqualizerScreen(
             "EQUALIZER",
             style = MaterialTheme.typography.titleLarge,
             letterSpacing = 2.sp,
-            fontWeight = FontWeight.Black,
+            fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.padding(top = 16.dp, bottom = 12.dp) // More breathing room
         )
@@ -79,7 +100,10 @@ fun EqualizerScreen(
             )
 
             LazyRow(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .nestedScroll(noParentScrollConnection),
+                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 4.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 items(uiState.eqPresets) { preset ->
@@ -144,7 +168,7 @@ fun EqualizerScreen(
             }
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(6.dp))
 
         // --- ACTION BUTTONS (16D & SAVE) ---
         val metalBrush = if (isDark) {
@@ -173,18 +197,19 @@ fun EqualizerScreen(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxHeight()
+                    .bounceClick { viewModel.toggle16D() }
                     .shadow(
                         elevation = if (is16D) 20.dp else 8.dp,
                         shape = RoundedCornerShape(16.dp),
-                        spotColor = if (is16D) themeColor else Color.Black
+                        spotColor = if (is16D) themeColor else Color.Black,
+                        ambientColor = if (is16D) themeColor else Color.Black
                     )
                     .graphicsLayer {
                         shape = RoundedCornerShape(16.dp)
                         clip = true
                     }
                     .background(if (is16D) themeColor else Color.Transparent)
-                    .then(if (!is16D) Modifier.background(inactiveBrush) else Modifier)
-                    .clickable { viewModel.toggle16D() },
+                    .then(if (!is16D) Modifier.background(inactiveBrush) else Modifier),
                 color = Color.Transparent
             ) {
                 Row(
@@ -206,10 +231,12 @@ fun EqualizerScreen(
                 modifier = Modifier
                     .weight(0.9f)
                     .fillMaxHeight()
+                    .bounceClick { viewModel.resetStudioEngine() }
                     .shadow(
-                        elevation = 12.dp,
+                        elevation = 8.dp,
                         shape = RoundedCornerShape(16.dp),
-                        spotColor = if (isDark) themeColor.copy(alpha = 0.4f) else Color.Black.copy(alpha = 0.4f)
+                        spotColor = if (isDark) themeColor else Color.Black,
+                        ambientColor = if (isDark) themeColor else Color.Black
                     )
                     .graphicsLayer {
                         shape = RoundedCornerShape(16.dp)
@@ -223,8 +250,7 @@ fun EqualizerScreen(
                             cornerRadius = CornerRadius(16.dp.toPx())
                         )
                     }
-                    .background(metalBrush)
-                    .clickable { viewModel.resetStudioEngine() },
+                    .background(metalBrush),
                 color = Color.Transparent
             ) {
                 Row(
@@ -242,10 +268,12 @@ fun EqualizerScreen(
                 modifier = Modifier
                     .weight(0.9f)
                     .fillMaxHeight()
+                    .bounceClick { showSaveDialog = true }
                     .shadow(
-                        elevation = 12.dp,
+                        elevation = 8.dp,
                         shape = RoundedCornerShape(16.dp),
-                        spotColor = if (isDark) themeColor.copy(alpha = 0.4f) else Color.Black.copy(alpha = 0.4f)
+                        spotColor = if (isDark) themeColor else Color.Black,
+                        ambientColor = if (isDark) themeColor else Color.Black
                     )
                     .graphicsLayer {
                         shape = RoundedCornerShape(16.dp)
@@ -259,8 +287,7 @@ fun EqualizerScreen(
                             cornerRadius = CornerRadius(16.dp.toPx())
                         )
                     }
-                    .background(metalBrush)
-                    .clickable { showSaveDialog = true },
+                    .background(metalBrush),
                 color = Color.Transparent
             ) {
                 Row(

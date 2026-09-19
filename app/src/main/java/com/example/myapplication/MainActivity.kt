@@ -27,6 +27,8 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
@@ -332,8 +334,30 @@ fun MainNavigationContent(
                         )
                     }
                 }
-            }
         }
+
+        // --- EDGE GESTURE PROTECTORS ---
+        // Prevents the HorizontalPager from swiping when triggering the System Back Gesture
+        val edgeWidth = 32.dp
+        Box(
+            modifier = Modifier
+                .align(Alignment.CenterStart)
+                .fillMaxHeight()
+                .width(edgeWidth)
+                .pointerInput(Unit) {
+                    detectHorizontalDragGestures { _, _ -> }
+                }
+        )
+        Box(
+            modifier = Modifier
+                .align(Alignment.CenterEnd)
+                .fillMaxHeight()
+                .width(edgeWidth)
+                .pointerInput(Unit) {
+                    detectHorizontalDragGestures { _, _ -> }
+                }
+        )
+    }
 
         // 2. FIXED FLOATING NAVIGATION AREA WITH GRADIENT MASK
         val navParallaxProgress = (1f - (currentOffset / screenHeightPx)).coerceIn(0f, 1f)
