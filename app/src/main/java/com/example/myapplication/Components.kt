@@ -37,9 +37,21 @@ import androidx.compose.ui.composed
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
+import androidx.compose.ui.platform.LocalView
+import android.view.HapticFeedbackConstants
 import kotlin.math.*
 
 private const val TWO_PI = 6.2831853f
+
+@Composable
+fun rememberHapticFeedback(isEnabled: Boolean): (Int) -> Unit {
+    val view = LocalView.current
+    return { feedbackConstant ->
+        if (isEnabled) {
+            view.performHapticFeedback(feedbackConstant)
+        }
+    }
+}
 
 fun Modifier.bounceClick(
     scaleDown: Float = 0.92f,
@@ -48,9 +60,11 @@ fun Modifier.bounceClick(
     var isPressed by remember { mutableStateOf(false) }
     val scale by animateFloatAsState(
         targetValue = if (isPressed) scaleDown else 1f,
-        animationSpec = spring(stiffness = 600f, dampingRatio = 0.5f),
+        animationSpec = spring(stiffness = 800f, dampingRatio = 0.6f),
         label = "BounceClickScale"
     )
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val view = LocalView.current
 
     this
         .graphicsLayer {
@@ -60,12 +74,20 @@ fun Modifier.bounceClick(
         .clickable(
             interactionSource = remember { MutableInteractionSource() },
             indication = null,
-            onClick = onClick
+            onClick = {
+                if (PreferenceManager.isHapticsEnabled(context)) {
+                    view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                }
+                onClick()
+            }
         )
         .pointerInput(Unit) {
             awaitEachGesture {
                 awaitFirstDown(requireUnconsumed = false)
                 isPressed = true
+                if (PreferenceManager.isHapticsEnabled(context)) {
+                    view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK) // Soft press down
+                }
                 waitForUpOrCancellation()
                 isPressed = false
             }

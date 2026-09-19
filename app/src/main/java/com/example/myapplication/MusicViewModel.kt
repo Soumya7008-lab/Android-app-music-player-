@@ -95,6 +95,7 @@ data class UiState(
     val selectedPreset: String = "Flat",
     val userName: String = "User",
     val isOnboardingRequired: Boolean = true,
+    val isHapticsEnabled: Boolean = true,
     val eqPresets: List<EqPreset> = listOf(
         EqPreset("Flat", listOf(0.5f, 0.5f, 0.5f, 0.5f, 0.5f)),
         EqPreset("Bass Boost", listOf(0.625f, 0.54f, 0.48f, 0.52f, 0.5f)), // Soothing, punchy bass (~+6dB) without mud
@@ -108,7 +109,8 @@ data class UiState(
 class MusicViewModel(application: Application) : AndroidViewModel(application) {
     private val _uiState = MutableStateFlow(UiState(
         userName = PreferenceManager.getUserName(application),
-        isOnboardingRequired = PreferenceManager.isFirstLaunch(application)
+        isOnboardingRequired = PreferenceManager.isFirstLaunch(application),
+        isHapticsEnabled = PreferenceManager.isHapticsEnabled(application)
     ))
     val uiState: StateFlow<UiState> = _uiState.asStateFlow()
 
@@ -249,6 +251,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
             mediaController.addListener(object : Player.Listener {
                 override fun onIsPlayingChanged(isPlaying: Boolean) {
                     _uiState.update { it.copy(isPlaying = isPlaying) }
+                    if (isPlaying) startProgressPolling()
                 }
                 override fun onPlaybackStateChanged(state: Int) {
                     if (state == Player.STATE_READY) {
@@ -652,6 +655,11 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     fun updateUserName(name: String) {
         PreferenceManager.setUserName(app, name)
         _uiState.update { it.copy(userName = name) }
+    }
+
+    fun setHapticsEnabled(enabled: Boolean) {
+        PreferenceManager.setHapticsEnabled(app, enabled)
+        _uiState.update { it.copy(isHapticsEnabled = enabled) }
     }
 
     fun completeOnboarding() {

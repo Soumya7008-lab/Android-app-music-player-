@@ -40,6 +40,7 @@ fun EqualizerScreen(
     val uiState by viewModel.uiState.collectAsState()
     val themeColor = MaterialTheme.colorScheme.primary
     val isDark = MaterialTheme.colorScheme.background == Color.Black
+    val haptic = rememberHapticFeedback(uiState.isHapticsEnabled)
     var showSaveDialog by remember { mutableStateOf(false) }
     var presetToDelete by remember { mutableStateOf<String?>(null) }
 
@@ -404,6 +405,8 @@ fun PresetChip(
 ) {
     val themeColor = MaterialTheme.colorScheme.primary
     val isDark = MaterialTheme.colorScheme.background == Color.Black
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val view = androidx.compose.ui.platform.LocalView.current
 
     val scale by animateFloatAsState(
         targetValue = if (isSelected) 1.05f else 1f,
@@ -421,8 +424,14 @@ fun PresetChip(
             .clip(RoundedCornerShape(16.dp))
             .background(if (isSelected) themeColor else MaterialTheme.colorScheme.surfaceVariant)
             .combinedClickable(
-                onClick = onClick,
-                onLongClick = onLongClick
+                onClick = {
+                    if (PreferenceManager.isHapticsEnabled(context)) view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+                    onClick()
+                },
+                onLongClick = {
+                    if (PreferenceManager.isHapticsEnabled(context)) view.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
+                    onLongClick()
+                }
             )
             .drawBehind {
                 if (isSelected && isDark) {

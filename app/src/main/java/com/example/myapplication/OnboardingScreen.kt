@@ -58,11 +58,11 @@ fun OnboardingScreen(
             targetState = currentStep,
             transitionSpec = {
                 if (targetState > initialState) {
-                    (fadeIn(animationSpec = tween(600)) + scaleIn(initialScale = 0.92f, animationSpec = spring(Spring.DampingRatioLowBouncy)))
-                        .togetherWith(fadeOut(animationSpec = tween(400)) + scaleOut(targetScale = 1.05f))
+                    (fadeIn(animationSpec = tween(250)) + scaleIn(initialScale = 0.92f, animationSpec = spring(Spring.DampingRatioLowBouncy)))
+                        .togetherWith(fadeOut(animationSpec = tween(250)) + scaleOut(targetScale = 1.05f))
                 } else {
-                    (fadeIn(animationSpec = tween(600)) + scaleIn(initialScale = 1.05f))
-                        .togetherWith(fadeOut(animationSpec = tween(400)) + scaleOut(targetScale = 0.92f))
+                    (fadeIn(animationSpec = tween(250)) + scaleIn(initialScale = 1.05f))
+                        .togetherWith(fadeOut(animationSpec = tween(250)) + scaleOut(targetScale = 0.92f))
                 }.using(SizeTransform(clip = false))
             },
             label = "StepTransition",

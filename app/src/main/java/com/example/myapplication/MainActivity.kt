@@ -71,6 +71,11 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         
+        // Ensure cache doesn't bloat. Wipe the directory forcefully on startup to fix past issues.
+        try {
+            cacheDir.resolve("image_cache").deleteRecursively()
+        } catch (e: Exception) { }
+        
         handleIntent(intent)
         
         setContent {
@@ -509,7 +514,9 @@ fun MainNavigationContent(
                     onThemeToggle = onThemeToggle,
                     onBackClick = { showSettings = false },
                     userName = uiState.userName,
-                    onUpdateName = { musicViewModel.updateUserName(it) }
+                    onUpdateName = { musicViewModel.updateUserName(it) },
+                    isHapticsEnabled = uiState.isHapticsEnabled,
+                    onHapticsToggle = { musicViewModel.setHapticsEnabled(it) }
                 )
             }
         }
@@ -639,7 +646,7 @@ fun NavPillItem(
 
     val contentColor by animateColorAsState(
         targetValue = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-        animationSpec = tween(400, easing = LinearOutSlowInEasing),
+        animationSpec = tween(250, easing = LinearOutSlowInEasing),
         label = "NavColor"
     )
 

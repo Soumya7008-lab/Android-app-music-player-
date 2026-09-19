@@ -323,6 +323,9 @@ fun PlaylistCard(
         label = "CardScale"
     )
 
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val view = androidx.compose.ui.platform.LocalView.current
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -333,8 +336,18 @@ fun PlaylistCard(
             .combinedClickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
-                onClick = onClick,
-                onLongClick = { showMenu = true }
+                onClick = {
+                    if (PreferenceManager.isHapticsEnabled(context)) {
+                        view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+                    }
+                    onClick()
+                },
+                onLongClick = {
+                    if (PreferenceManager.isHapticsEnabled(context)) {
+                        view.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
+                    }
+                    showMenu = true
+                }
             )
             .pointerInput(Unit) {
                 awaitEachGesture {
@@ -688,6 +701,8 @@ fun PlaylistDetailView(
                                 )
                             }
                     ) {
+                        val context = androidx.compose.ui.platform.LocalContext.current
+                        val view = androidx.compose.ui.platform.LocalView.current
                         TrackListItem(
                             number = index + 1,
                             title = track.title,
@@ -695,6 +710,9 @@ fun PlaylistDetailView(
                             duration = track.duration,
                             isPlaying = track == uiState.currentTrack && uiState.isPlaying,
                             onClick = {
+                                if (PreferenceManager.isHapticsEnabled(context)) {
+                                    view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+                                }
                                 if (track == uiState.currentTrack) viewModel.togglePlayPause()
                                 else viewModel.playPlaylist(playlist.tracks, index, playlist.id)
                             },
@@ -995,6 +1013,9 @@ fun LibraryThreeDButton(
     else if (text.isNotEmpty()) MaterialTheme.colorScheme.onPrimary
     else (if (isDark) Color.White.copy(alpha = 0.95f) else Color.Black.copy(alpha = 0.85f))
 
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val view = androidx.compose.ui.platform.LocalView.current
+
     Box(
         contentAlignment = Alignment.Center,
         modifier = Modifier
@@ -1003,6 +1024,9 @@ fun LibraryThreeDButton(
                 awaitEachGesture {
                     awaitFirstDown(requireUnconsumed = false)
                     isPressed = true
+                    if (PreferenceManager.isHapticsEnabled(context)) {
+                        view.performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK)
+                    }
                     waitForUpOrCancellation()
                     isPressed = false
                 }
@@ -1010,7 +1034,12 @@ fun LibraryThreeDButton(
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
-                onClick = onClick
+                onClick = {
+                    if (PreferenceManager.isHapticsEnabled(context)) {
+                        view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+                    }
+                    onClick()
+                }
             )
             .graphicsLayer {
                 scaleX = scale

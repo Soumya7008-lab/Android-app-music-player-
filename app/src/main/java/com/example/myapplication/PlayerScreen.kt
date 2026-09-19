@@ -41,8 +41,9 @@ fun PlayerScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val currentTrack = uiState.currentTrack
-    val themeColor = MaterialTheme.colorScheme.primary
     val isDark = MaterialTheme.colorScheme.background == Color.Black
+    val themeColor = MaterialTheme.colorScheme.primary
+    val haptic = rememberHapticFeedback(uiState.isHapticsEnabled)
 
     Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         Box(
@@ -309,7 +310,10 @@ fun PlayerScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceAround
                 ) {
-                    IconButton(onClick = { viewModel.toggleShuffle() }) {
+                    IconButton(onClick = { 
+                        haptic(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+                        viewModel.toggleShuffle() 
+                    }) {
                         Icon(
                             Icons.Default.Shuffle,
                             contentDescription = "Shuffle",
@@ -317,25 +321,42 @@ fun PlayerScreen(
                         )
                     }
 
-                    IconButton(onClick = { viewModel.skipPrevious() }) {
+                    IconButton(onClick = { 
+                        haptic(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+                        viewModel.skipPrevious() 
+                    }) {
                         Icon(Icons.Default.SkipPrevious, null, tint = themeColor, modifier = Modifier.size(44.dp))
                     }
 
                     ThreeDPlayButton(
-                        onClick = { viewModel.togglePlayPause() },
+                        onClick = { 
+                            haptic(android.view.HapticFeedbackConstants.CLOCK_TICK) // Play button gets a softer, deeper tick
+                            viewModel.togglePlayPause() 
+                        },
                         isPlaying = uiState.isPlaying,
                         modifier = Modifier.size(86.dp)
                     )
 
-                    IconButton(onClick = { viewModel.skipNext() }) {
+                    IconButton(onClick = { 
+                        haptic(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+                        viewModel.skipNext() 
+                    }) {
                         Icon(Icons.Default.SkipNext, null, tint = themeColor, modifier = Modifier.size(44.dp))
                     }
 
-                    IconButton(onClick = { viewModel.toggleRepeat() }) {
+                    IconButton(onClick = { 
+                        haptic(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+                        viewModel.toggleRepeat() 
+                    }) {
+                        val icon = when (uiState.repeatMode) {
+                            2 -> Icons.Default.RepeatOne
+                            1 -> Icons.Default.Repeat
+                            else -> Icons.Default.Repeat
+                        }
                         Icon(
-                            if (uiState.repeatMode == Player.REPEAT_MODE_ONE) Icons.Default.RepeatOne else Icons.Default.Repeat,
+                            icon,
                             contentDescription = "Repeat",
-                            tint = if (uiState.repeatMode != Player.REPEAT_MODE_OFF) themeColor else MaterialTheme.colorScheme.onSurfaceVariant
+                            tint = if (uiState.repeatMode > 0) themeColor else MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }

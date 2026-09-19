@@ -6,6 +6,7 @@ object PreferenceManager {
     private const val PREFS_NAME = "app_prefs"
     private const val KEY_IS_FIRST_LAUNCH = "is_first_launch"
     private const val KEY_USER_NAME = "user_name"
+    private const val KEY_HAPTICS_ENABLED = "haptics_enabled"
 
     fun isFirstLaunch(context: Context): Boolean {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -25,5 +26,15 @@ object PreferenceManager {
     fun setUserName(context: Context, name: String) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         prefs.edit().putString(KEY_USER_NAME, name).apply()
+    }
+
+    fun isHapticsEnabled(context: Context): Boolean {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        return prefs.getBoolean(KEY_HAPTICS_ENABLED, true) // Enabled by default
+    }
+
+    fun setHapticsEnabled(context: Context, enabled: Boolean) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        prefs.edit().putBoolean(KEY_HAPTICS_ENABLED, enabled).apply()
     }
 }

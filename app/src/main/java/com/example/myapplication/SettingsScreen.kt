@@ -36,7 +36,9 @@ fun SettingsScreen(
     onThemeToggle: () -> Unit,
     onBackClick: () -> Unit,
     userName: String,
-    onUpdateName: (String) -> Unit
+    onUpdateName: (String) -> Unit,
+    isHapticsEnabled: Boolean,
+    onHapticsToggle: (Boolean) -> Unit
 ) {
     var showNameDialog by remember { mutableStateOf(false) }
 
@@ -102,6 +104,32 @@ fun SettingsScreen(
                 title = "User Name",
                 subtitle = userName,
                 onClick = { showNameDialog = true }
+            )
+
+            val view = androidx.compose.ui.platform.LocalView.current
+            SettingsItem(
+                icon = androidx.compose.material.icons.Icons.Default.TouchApp,
+                title = "Premium Haptics",
+                subtitle = if (isHapticsEnabled) "Enabled" else "Disabled",
+                onClick = {
+                    val newState = !isHapticsEnabled
+                    onHapticsToggle(newState)
+                    if (newState) {
+                        view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+                    }
+                },
+                trailing = {
+                    Switch(
+                        checked = isHapticsEnabled,
+                        onCheckedChange = null, // Disable switch interaction, let parent handle click
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
+                            checkedTrackColor = MaterialTheme.colorScheme.primary,
+                            uncheckedThumbColor = MaterialTheme.colorScheme.outline,
+                            uncheckedTrackColor = MaterialTheme.colorScheme.surfaceVariant
+                        )
+                    )
+                }
             )
 
             Spacer(modifier = Modifier.height(32.dp))
@@ -186,8 +214,16 @@ fun ThemeSwitcherItem(
         Brush.verticalGradient(colors = listOf(Color(0xFFF9F9F9), Color(0xFFEBEBEB)))
     }
 
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val view = androidx.compose.ui.platform.LocalView.current
+
     Surface(
-        onClick = onClick,
+        onClick = {
+            if (PreferenceManager.isHapticsEnabled(context)) {
+                view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+            }
+            onClick()
+        },
         color = Color.Transparent,
         modifier = Modifier
             .fillMaxWidth()
@@ -295,8 +331,16 @@ fun SettingsItem(
         Brush.verticalGradient(colors = listOf(Color(0xFFF9F9F9), Color(0xFFEBEBEB)))
     }
 
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val view = androidx.compose.ui.platform.LocalView.current
+
     Surface(
-        onClick = onClick,
+        onClick = {
+            if (PreferenceManager.isHapticsEnabled(context)) {
+                view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+            }
+            onClick()
+        },
         color = Color.Transparent,
         modifier = modifier
             .fillMaxWidth()
