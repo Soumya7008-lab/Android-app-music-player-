@@ -204,7 +204,7 @@ fun EqualizerScreen(
             // RESET STUDIO ENGINE BUTTON (same design as other buttons)
             Surface(
                 modifier = Modifier
-                    .weight(0.8f)
+                    .weight(0.9f)
                     .fillMaxHeight()
                     .shadow(
                         elevation = 12.dp,
@@ -231,7 +231,7 @@ fun EqualizerScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.Center
                 ) {
-                    Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(18.dp), tint = contentColor)
+                    Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp), tint = contentColor)
                     Spacer(modifier = Modifier.width(4.dp))
                     Text("RESET", fontWeight = FontWeight.Black, fontSize = 12.sp, color = contentColor, letterSpacing = 1.sp)
                 }
@@ -240,7 +240,7 @@ fun EqualizerScreen(
             // SAVE AS CUSTOM PRESET BUTTON
             Surface(
                 modifier = Modifier
-                    .weight(1.2f)
+                    .weight(0.9f)
                     .fillMaxHeight()
                     .shadow(
                         elevation = 12.dp,
@@ -267,9 +267,9 @@ fun EqualizerScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.Center
                 ) {
-                    Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(18.dp), tint = contentColor)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("SAVE PRESET", fontWeight = FontWeight.Black, fontSize = 12.sp, color = contentColor, letterSpacing = 1.sp)
+                    Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(16.dp), tint = contentColor)
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("SAVE", fontWeight = FontWeight.Black, fontSize = 12.sp, color = contentColor, letterSpacing = 1.sp)
                 }
             }
         }

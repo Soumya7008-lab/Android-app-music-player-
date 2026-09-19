@@ -50,8 +50,12 @@ android {
             signingConfig = signingConfigs.getByName("debug")
         }
         debug {
-            isMinifyEnabled = false // Keep false for faster builds, but release will be much smaller
-            isShrinkResources = false
+            isMinifyEnabled = true // Changed to true to reduce debug app size
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
         }
     }
 
