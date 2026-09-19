@@ -197,12 +197,26 @@ class TitanKotlinEngine {
 
         if (spatialMix > 0.001f) {
             val s = sin(angle); val c = cos(angle)
-            // Professional binaural panning with wider separation
-            val gL = 0.5f - (s * 0.48f); val gR = 0.5f + (s * 0.48f)
+            
+            // Professional HRTF-style level difference (Acoustic Shadow)
+            // Head shadow rarely drops below -12dB (approx 0.25 amplitude).
+            // This ensures the opposite ear still plays softly instead of going blank.
+            val gL = 0.5f - (s * 0.25f)
+            val gR = 0.5f + (s * 0.25f)
+            
             val maxD = (1.5f / 1000f) * sampleRate
 
-            val spatL = readHermite(delayL, gR * maxD) * gL * (0.85f + c * 0.15f)
-            val spatR = readHermite(delayR, gL * maxD) * gR * (0.85f + c * 0.15f)
+            // Read from delay lines (Interaural Time Difference)
+            val delayReadL = readHermite(delayL, gR * maxD)
+            val delayReadR = readHermite(delayR, gL * maxD)
+
+            // Crossfeed: The far ear still hears the room reflection of the near ear
+            // We mix 20% of the opposite channel's delayed signal to simulate room scatter
+            val crossL = delayReadL * 0.80f + delayReadR * 0.20f
+            val crossR = delayReadR * 0.80f + delayReadL * 0.20f
+
+            val spatL = crossL * gL * (0.85f + c * 0.15f)
+            val spatR = crossR * gR * (0.85f + c * 0.15f)
 
             // Crossfade between dry and spatial
             l = l * (1f - spatialMix) + spatL * spatialMix

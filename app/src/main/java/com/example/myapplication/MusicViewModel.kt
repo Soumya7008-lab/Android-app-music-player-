@@ -97,10 +97,10 @@ data class UiState(
     val isOnboardingRequired: Boolean = true,
     val eqPresets: List<EqPreset> = listOf(
         EqPreset("Flat", listOf(0.5f, 0.5f, 0.5f, 0.5f, 0.5f)),
-        EqPreset("Bass Boost", listOf(0.95f, 0.7f, 0.5f, 0.4f, 0.3f)), // Aggressive Lows
-        EqPreset("Studio Crystal", listOf(0.45f, 0.5f, 0.6f, 0.85f, 0.95f)), // High clarity
-        EqPreset("Vocals", listOf(0.2f, 0.45f, 0.9f, 0.7f, 0.4f)),
-        EqPreset("Cinema", listOf(0.85f, 0.6f, 0.4f, 0.6f, 0.9f))
+        EqPreset("Bass Boost", listOf(0.625f, 0.54f, 0.48f, 0.52f, 0.5f)), // Soothing, punchy bass (~+6dB) without mud
+        EqPreset("Studio Crystal", listOf(0.52f, 0.47f, 0.52f, 0.56f, 0.59f)), // High clarity, pro analytical curve
+        EqPreset("Vocals", listOf(0.46f, 0.48f, 0.58f, 0.56f, 0.48f)), // Mid-centric, intimate
+        EqPreset("Cinema", listOf(0.60f, 0.46f, 0.5f, 0.54f, 0.58f)) // Immersive 'smile' curve
     ),
     val visualizerData: List<Float> = List(20) { 0.1f }
 )
