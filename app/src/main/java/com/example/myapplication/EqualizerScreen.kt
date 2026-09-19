@@ -61,7 +61,7 @@ fun EqualizerScreen(
         DynamicEqualizer(
             data = uiState.visualizerData,
             modifier = Modifier
-                .height(44.dp) 
+                .height(44.dp)
                 .fillMaxWidth()
         )
 
@@ -75,7 +75,7 @@ fun EqualizerScreen(
                 fontWeight = FontWeight.Bold,
                 letterSpacing = 1.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(bottom = 8.dp) 
+                modifier = Modifier.padding(bottom = 8.dp)
             )
 
             LazyRow(

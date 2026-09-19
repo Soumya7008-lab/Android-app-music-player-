@@ -764,7 +764,7 @@ fun DynamicEqualizer(
             val spacing = 6.dp.toPx()
             val totalSpacing = spacing * (barCount - 1)
             val barWidth = (size.width - totalSpacing) / barCount
-            
+
             data.forEachIndexed { index, value ->
                 val x = index * (barWidth + spacing)
                 
